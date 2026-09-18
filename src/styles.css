@@ -151,3 +151,47 @@
     color: var(--color-foreground);
   }
 }
+
+@theme inline {
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+}
+
+@layer base {
+  body {
+    font-family: var(--font-body);
+    background-image: var(--surface-glow);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+}
+
+@utility panel {
+  background-color: color-mix(in oklch, var(--card) 88%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-2xl);
+  backdrop-filter: blur(12px);
+}
+
+@utility field {
+  width: 100%;
+  background-color: var(--input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.55rem 0.75rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+@utility field-focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 25%, transparent);
+}
