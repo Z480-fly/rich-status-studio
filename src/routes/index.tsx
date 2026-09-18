@@ -45,7 +45,7 @@ function describeError(error: unknown, fallback: string): string {
   if (typeof error === "string" && error) return error;
   if (error && typeof error === "object") {
     const e = error as Record<string, unknown>;
-    const msg = e.message ?? e.error_description ?? e.error ?? e.code;
+    const msg = e["message"] ?? e["error_description"] ?? e["error"] ?? e["code"];
     if (typeof msg === "string" && msg) return msg;
     try {
       const json = JSON.stringify(error);
