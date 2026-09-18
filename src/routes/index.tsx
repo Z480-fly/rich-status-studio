@@ -39,6 +39,24 @@ export const Route = createFileRoute("/")({
 
 type Status = { kind: "idle" | "busy" | "ok" | "error"; message: string };
 
+/** Surfaces the real Discord error text, even when the SDK throws non-Error values. */
+function describeError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  if (error && typeof error === "object") {
+    const e = error as Record<string, unknown>;
+    const msg = e.message ?? e.error_description ?? e.error ?? e.code;
+    if (typeof msg === "string" && msg) return msg;
+    try {
+      const json = JSON.stringify(error);
+      if (json && json !== "{}" && json !== "null") return json;
+    } catch {
+      /* fall through */
+    }
+  }
+  return fallback;
+}
+
 function PresenceStudio() {
   const [presetId, setPresetId] = useState("music");
   const [draft, setDraft] = useState<PresenceDraft>(
@@ -80,7 +98,7 @@ function PresenceStudio() {
     } catch (error) {
       setStatus({
         kind: "error",
-        message: error instanceof Error ? error.message : "Could not connect to Discord.",
+        message: describeError(error, "Could not connect to Discord."),
       });
     }
   };
