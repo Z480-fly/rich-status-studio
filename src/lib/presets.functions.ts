@@ -48,7 +48,7 @@ function rowToPreset(row: any): SavedPreset {
 }
 
 export const listSavedPresets = createServerFn({ method: "POST" })
-  .inputValidator(requireToken)
+  .validator(requireToken)
   .handler(async ({ data }) => {
     const userId = await discordUserId(data.accessToken);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -62,7 +62,7 @@ export const listSavedPresets = createServerFn({ method: "POST" })
   });
 
 export const saveSavedPreset = createServerFn({ method: "POST" })
-  .inputValidator(
+  .validator(
     (input: { accessToken: string; id?: string; name: string; emoji?: string; accent?: string; draft: PresenceDraft }) => {
       const { accessToken } = requireToken(input);
       if (!input.name?.trim()) throw new Error("Give the preset a name.");
@@ -111,7 +111,7 @@ export const saveSavedPreset = createServerFn({ method: "POST" })
   });
 
 export const deleteSavedPreset = createServerFn({ method: "POST" })
-  .inputValidator((input: { accessToken: string; id: string }) => {
+  .validator((input: { accessToken: string; id: string }) => {
     const { accessToken } = requireToken(input);
     if (!input.id) throw new Error("Missing preset.");
     return { accessToken, id: input.id };
@@ -134,7 +134,7 @@ export const deleteSavedPreset = createServerFn({ method: "POST" })
  * back through this app's own public image route.
  */
 export const uploadPresenceImage = createServerFn({ method: "POST" })
-  .inputValidator((input: { accessToken: string; dataUrl: string }) => {
+  .validator((input: { accessToken: string; dataUrl: string }) => {
     const { accessToken } = requireToken(input);
     if (typeof input.dataUrl !== "string" || !input.dataUrl.startsWith("data:image/")) {
       throw new Error("That wasn't a usable image.");
@@ -165,43 +165,18 @@ export const uploadPresenceImage = createServerFn({ method: "POST" })
   });
 
 /**
- * Discord cannot use a raw external URL in an activity's assets. Registering it
- * as an application external asset returns an `mp:` path that it can.
+ * Discord's current Embedded App SDK supports public HTTPS URLs directly in
+ * Rich Presence assets. Keep this server function as a compatibility layer so
+ * older saved presets still work, but don't require the access token or the
+ * external-assets endpoint just to display an image.
  */
 export const resolveExternalAssets = createServerFn({ method: "POST" })
-  .inputValidator((input: { accessToken: string; urls: string[] }) => {
-    const { accessToken } = requireToken(input);
-    const urls = (input.urls ?? []).filter((u) => typeof u === "string" && /^https?:\/\//i.test(u));
-    return { accessToken, urls: urls.slice(0, 4) };
+  .validator((input: { accessToken?: string; urls: string[] }) => {
+    const urls = (input.urls ?? []).filter(
+      (u) => typeof u === "string" && /^https?:\/\//i.test(u),
+    );
+    return { urls: urls.slice(0, 4) };
   })
-  .handler(async ({ data }) => {
-    if (data.urls.length === 0) return { mapping: {} as Record<string, string> };
-
-    const clientId = process.env["DISCORD_CLIENT_ID"];
-    if (!clientId) throw new Error("Discord credentials are not configured");
-
-    const res = await fetch(`https://discord.com/api/v10/applications/${clientId}/external-assets`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${data.accessToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ urls: data.urls }),
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("external-assets failed", res.status, text);
-      throw new Error("Discord wouldn't accept one of the images.");
-    }
-
-    const list = (await res.json()) as { url?: string; external_asset_path?: string }[];
-    const mapping: Record<string, string> = {};
-    list.forEach((entry, index) => {
-      const source = entry.url ?? data.urls[index];
-      if (source && entry.external_asset_path) {
-        mapping[source] = `mp:${entry.external_asset_path}`;
-      }
-    });
-    return { mapping };
-  });
+  .handler(async ({ data }) => ({
+    mapping: Object.fromEntries(data.urls.map((url) => [url, url])),
+  }));

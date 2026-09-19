@@ -118,3 +118,12 @@ cd <repository-name>
 npm i
 npm run dev
 ```
+
+
+## Discord setup
+
+This project uses Discord's Embedded App SDK Rich Presence. In the deployed environment, configure `DISCORD_CLIENT_ID` and `DISCORD_CLIENT_SECRET` as server secrets. The client ID may also be supplied as `VITE_DISCORD_CLIENT_ID` because it is public.
+
+In the Discord Developer Portal, the Activity must be configured as an Embedded App and the OAuth setup must allow the Embedded App SDK authorization flow. The app requests `identify` and `rpc.activities.write`. Discord controls the app name shown in the Rich Presence header; the app cannot replace that name through `setActivity()`.
+
+The **Clear** button now sends a nullable activity, which is the actual SDK mechanism for clearing the Rich Presence instead of leaving an empty `Playing` activity behind. Public HTTPS image URLs are passed directly to Discord, which is supported by the current Embedded App SDK.

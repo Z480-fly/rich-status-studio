@@ -6,7 +6,9 @@ import { createServerFn } from "@tanstack/react-start";
  * browser through a tiny server function.
  */
 export const getDiscordClientId = createServerFn({ method: "GET" }).handler(async () => {
-  return { clientId: process.env["DISCORD_CLIENT_ID"] ?? null };
+  return {
+    clientId: process.env["DISCORD_CLIENT_ID"] ?? process.env["VITE_DISCORD_CLIENT_ID"] ?? null,
+  };
 });
 
 /**
@@ -14,14 +16,14 @@ export const getDiscordClientId = createServerFn({ method: "GET" }).handler(asyn
  * for an access token. The client secret never leaves the server.
  */
 export const exchangeDiscordCode = createServerFn({ method: "POST" })
-  .inputValidator((input: { code: string }) => {
+  .validator((input: { code: string }) => {
     if (!input || typeof input.code !== "string" || input.code.length === 0) {
       throw new Error("Missing authorization code");
     }
     return { code: input.code };
   })
   .handler(async ({ data }) => {
-    const clientId = process.env["DISCORD_CLIENT_ID"];
+    const clientId = process.env["DISCORD_CLIENT_ID"] ?? process.env["VITE_DISCORD_CLIENT_ID"];
     const clientSecret = process.env["DISCORD_CLIENT_SECRET"];
 
     if (!clientId || !clientSecret) {

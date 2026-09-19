@@ -91,7 +91,13 @@ function PresenceStudio() {
 
   // Keep connection state in sync
   useEffect(() => {
-    return subscribeConnection(setConnectionState);
+    return subscribeConnection((next) => {
+      setConnectionState(next);
+      if (next === "disconnected") {
+        setConnected(false);
+        setLive(false);
+      }
+    });
   }, []);
 
   // Re-apply activity when the page becomes visible again (e.g. after switching to Spotify)
@@ -184,7 +190,7 @@ function PresenceStudio() {
     } catch (error) {
       setStatus({
         kind: "error",
-        message: error instanceof Error ? error.message : "Could not update your presence.",
+        message: describeError(error, "Could not update your presence."),
       });
     }
   };
@@ -194,11 +200,11 @@ function PresenceStudio() {
     try {
       await resetActivity();
       setLive(false);
-      setStatus({ kind: "ok", message: "Cleared back to the plain Activity presence." });
+      setStatus({ kind: "ok", message: "Rich Presence cleared." });
     } catch (error) {
       setStatus({
         kind: "error",
-        message: error instanceof Error ? error.message : "Could not clear your presence.",
+        message: describeError(error, "Could not clear your presence."),
       });
     }
   };
@@ -215,7 +221,7 @@ function PresenceStudio() {
       const { preset } = await saveSavedPreset({
         data: {
           accessToken: token,
-          id: editingId ?? undefined,
+          ...(editingId ? { id: editingId } : {}),
           name,
           emoji: "✨",
           accent: "oklch(0.8 0.13 180)",

@@ -1,6 +1,5 @@
 import { DiscordSDK } from "@discord/embedded-app-sdk";
 import { exchangeDiscordCode, getDiscordClientId } from "./discord.functions";
-import { resolveExternalAssets } from "./presets.functions";
 import { devLog, warnLog } from "./logger";
 
 let sdk: DiscordSDK | null = null;
@@ -64,6 +63,26 @@ async function ensureSdk(): Promise<DiscordSDK> {
   }
   const created = new DiscordSDK(clientIdCache);
   await created.ready();
+
+  // A new SDK instance must be authenticated before it can accept commands.
+  // This matters after a transient RPC failure, when applyWithRetry drops the
+  // old handle and creates a replacement while the OAuth token is still valid.
+  if (authenticated && accessToken) {
+    try {
+      const auth = await created.commands.authenticate({ access_token: accessToken });
+      accessToken = auth.access_token || accessToken;
+      username = auth.user.global_name || auth.user.username || username;
+      devLog("sdk:reauthenticated", username);
+    } catch (error) {
+      warnLog("sdk:reauthenticate-failed", error);
+      authenticated = false;
+      accessToken = null;
+      sdk = null;
+      setState("disconnected");
+      throw new Error("Your Discord connection expired. Connect again.");
+    }
+  }
+
   sdk = created;
   devLog("sdk:connected");
   return created;
@@ -105,37 +124,24 @@ export async function connectToDiscord(): Promise<{ username: string }> {
   }
 }
 
-/** Turns any http(s) image URLs in the payload into Discord-usable asset paths. */
-async function resolveAssets(activity: Record<string, unknown>): Promise<Record<string, unknown>> {
-  const assets = activity["assets"] as Record<string, string> | undefined;
-  if (!assets || !accessToken) return activity;
-
-  const urls = ["large_image", "small_image"]
-    .map((k) => assets[k])
-    .filter((v): v is string => !!v && /^https?:\/\//i.test(v) && !assetCache.has(v));
-
-  if (urls.length > 0) {
-    const { mapping } = await resolveExternalAssets({ data: { accessToken, urls } });
-    Object.entries(mapping).forEach(([url, path]) => assetCache.set(url, path));
-  }
-
-  const resolved: Record<string, string> = { ...assets };
-  for (const key of ["large_image", "small_image"] as const) {
-    const value = assets[key];
-    if (value && assetCache.has(value)) resolved[key] = assetCache.get(value)!;
-  }
-  return { ...activity, assets: resolved };
+/** Discord accepts public HTTPS image URLs directly for Rich Presence assets. */
+async function resolveAssets(
+  activity: Record<string, unknown> | null,
+): Promise<Record<string, unknown> | null> {
+  return activity;
 }
 
-async function pushActivity(activity: Record<string, unknown>): Promise<void> {
+async function pushActivity(activity: Record<string, unknown> | null): Promise<void> {
   const active = await ensureSdk();
   const payload = await resolveAssets(activity);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await active.commands.setActivity({ activity: payload as any });
+  // Discord's Embedded App SDK accepts external https image URLs directly.
+  // Keep the payload intact instead of converting URLs through the API, which
+  // can fail for perfectly valid public images.
+  await active.commands.setActivity({ activity: payload });
 }
 
 /** Applies an activity with bounded retries and a single in-flight request. */
-async function applyWithRetry(activity: Record<string, unknown>, label: string): Promise<void> {
+async function applyWithRetry(activity: Record<string, unknown> | null, label: string): Promise<void> {
   if (applying) await applying.catch(() => {});
 
   applying = (async () => {
@@ -148,6 +154,7 @@ async function applyWithRetry(activity: Record<string, unknown>, label: string):
       } catch (error) {
         lastError = error;
         warnLog(`setActivity:failure (${label})`, error);
+        if (!authenticated) break;
         if (attempt === MAX_RETRIES) break;
         // Drop the SDK handle so the next attempt re-initialises it.
         sdk = null;
@@ -181,7 +188,9 @@ export async function publishActivity(activity: Record<string, unknown>): Promis
 
 export async function resetActivity(): Promise<void> {
   if (!authenticated) throw new Error("Connect to Discord first.");
-  await applyWithRetry({ type: 0 }, "clear");
+  // The Embedded App SDK uses a nullable activity to clear Rich Presence.
+  // Sending `{ type: 0 }` only creates an empty Playing activity.
+  await applyWithRetry(null, "clear");
   lastActivity = null;
   lastActivityJson = "";
 }
