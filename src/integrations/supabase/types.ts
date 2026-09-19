@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      presets: {
+        Row: {
+          accent: string
+          created_at: string
+          discord_user_id: string
+          draft: Json
+          emoji: string
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          accent?: string
+          created_at?: string
+          discord_user_id: string
+          draft: Json
+          emoji?: string
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          accent?: string
+          created_at?: string
+          discord_user_id?: string
+          draft?: Json
+          emoji?: string
+          id?: string
+          name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
