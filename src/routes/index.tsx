@@ -10,10 +10,21 @@ import {
 } from "@/lib/presence";
 import {
   connectToDiscord,
+  getAccessToken,
   isInsideDiscord,
   publishActivity,
+  reapplyAfterResume,
   resetActivity,
+  subscribeConnection,
+  type ConnectionState,
 } from "@/lib/discord-client";
+import {
+  deleteSavedPreset,
+  listSavedPresets,
+  saveSavedPreset,
+  type SavedPreset,
+} from "@/lib/presets.functions";
+import { ImagePicker } from "@/components/ImagePicker";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -63,13 +74,65 @@ function PresenceStudio() {
     () => PRESETS.find((p) => p.id === "music")!.draft,
   );
   const [connected, setConnected] = useState(false);
+  const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
   const [inDiscord, setInDiscord] = useState(true);
   const [live, setLive] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle", message: "" });
 
+  // Saved presets (personal ones stored in Supabase)
+  const [savedPresets, setSavedPresets] = useState<SavedPreset[]>([]);
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   useEffect(() => {
     setInDiscord(isInsideDiscord());
   }, []);
+
+  // Keep connection state in sync
+  useEffect(() => {
+    return subscribeConnection(setConnectionState);
+  }, []);
+
+  // Re-apply activity when the page becomes visible again (e.g. after switching to Spotify)
+  useEffect(() => {
+    if (!connected) return;
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void reapplyAfterResume().then((ok) => {
+          if (ok) {
+            setLive(true);
+            setStatus({ kind: "ok", message: "Status restored after returning." });
+          }
+        });
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
+    // Also handle pageshow for bfcache / iOS cases
+    window.addEventListener("pageshow", onVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener("pageshow", onVisibility);
+    };
+  }, [connected]);
+
+  // Load saved presets once connected
+  useEffect(() => {
+    if (!connected) return;
+    const token = getAccessToken();
+    if (!token) return;
+
+    setSavedLoading(true);
+    listSavedPresets({ data: { accessToken: token } })
+      .then((res) => setSavedPresets(res.presets ?? []))
+      .catch(() => {
+        /* non-fatal – user can still use built-in presets */
+      })
+      .finally(() => setSavedLoading(false));
+  }, [connected]);
 
   const activePreset = useMemo(
     () => PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]!,
@@ -85,7 +148,16 @@ function PresenceStudio() {
     const preset = PRESETS.find((p) => p.id === id);
     if (!preset) return;
     setPresetId(id);
+    setEditingId(null);
     setDraft(id === "custom" ? { ...emptyDraft, timestampMode: "none" } : { ...preset.draft });
+    setLive(false);
+  };
+
+  const applySavedPreset = (preset: SavedPreset) => {
+    setPresetId("custom");
+    setEditingId(preset.id);
+    setDraft({ ...preset.draft });
+    setSaveName(preset.name);
     setLive(false);
   };
 
@@ -131,6 +203,84 @@ function PresenceStudio() {
     }
   };
 
+  const handleSavePreset = async () => {
+    const token = getAccessToken();
+    if (!token) {
+      setStatus({ kind: "error", message: "Connect to Discord first." });
+      return;
+    }
+    const name = saveName.trim() || "My preset";
+    setStatus({ kind: "busy", message: editingId ? "Updating preset…" : "Saving preset…" });
+    try {
+      const { preset } = await saveSavedPreset({
+        data: {
+          accessToken: token,
+          id: editingId ?? undefined,
+          name,
+          emoji: "✨",
+          accent: "oklch(0.8 0.13 180)",
+          draft,
+        },
+      });
+      setSavedPresets((prev) => {
+        const others = prev.filter((p) => p.id !== preset.id);
+        return [...others, preset];
+      });
+      setEditingId(preset.id);
+      setSaveName(preset.name);
+      setStatus({ kind: "ok", message: `Saved “${preset.name}”.` });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not save preset.",
+      });
+    }
+  };
+
+  const handleDuplicatePreset = async (preset: SavedPreset) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setStatus({ kind: "busy", message: "Duplicating…" });
+    try {
+      const { preset: copy } = await saveSavedPreset({
+        data: {
+          accessToken: token,
+          name: `${preset.name} (copy)`,
+          emoji: preset.emoji,
+          accent: preset.accent,
+          draft: preset.draft,
+        },
+      });
+      setSavedPresets((prev) => [...prev, copy]);
+      setStatus({ kind: "ok", message: `Duplicated as “${copy.name}”.` });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not duplicate.",
+      });
+    }
+  };
+
+  const handleDeletePreset = async (id: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setStatus({ kind: "busy", message: "Deleting…" });
+    try {
+      await deleteSavedPreset({ data: { accessToken: token, id } });
+      setSavedPresets((prev) => prev.filter((p) => p.id !== id));
+      if (editingId === id) {
+        setEditingId(null);
+        setSaveName("");
+      }
+      setStatus({ kind: "ok", message: "Preset deleted." });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Could not delete.",
+      });
+    }
+  };
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-8 lg:px-12">
       <div className="mx-auto max-w-6xl">
@@ -148,15 +298,27 @@ function PresenceStudio() {
           <div className="flex items-center gap-3">
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                live
-                  ? "border-primary/50 bg-primary/10 text-primary"
-                  : "border-border bg-secondary text-muted-foreground"
+                connectionState === "reconnecting"
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-600"
+                  : live
+                    ? "border-primary/50 bg-primary/10 text-primary"
+                    : "border-border bg-secondary text-muted-foreground"
               }`}
             >
               <span
-                className={`size-2 rounded-full ${live ? "animate-pulse bg-primary" : "bg-muted-foreground"}`}
+                className={`size-2 rounded-full ${
+                  connectionState === "reconnecting"
+                    ? "animate-pulse bg-amber-500"
+                    : live
+                      ? "animate-pulse bg-primary"
+                      : "bg-muted-foreground"
+                }`}
               />
-              {live ? "Live on your profile" : "Not active"}
+              {connectionState === "reconnecting"
+                ? "Reconnecting…"
+                : live
+                  ? "Live on your profile"
+                  : "Not active"}
             </span>
           </div>
         </header>
@@ -171,11 +333,11 @@ function PresenceStudio() {
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Presets
+            Built-in presets
           </h2>
           <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
             {PRESETS.map((preset) => {
-              const selected = preset.id === presetId;
+              const selected = preset.id === presetId && !editingId;
               return (
                 <button
                   key={preset.id}
@@ -192,6 +354,95 @@ function PresenceStudio() {
               );
             })}
           </div>
+        </section>
+
+        {/* Personal saved presets */}
+        <section className="mt-8">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+              My saved presets
+            </h2>
+            {connectionState === "reconnecting" && (
+              <span className="text-xs text-muted-foreground">Reconnecting…</span>
+            )}
+          </div>
+
+          {!connected ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Connect to Discord to save and load your personal presets.
+            </p>
+          ) : savedLoading ? (
+            <p className="mt-3 text-sm text-muted-foreground">Loading your presets…</p>
+          ) : (
+            <>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {savedPresets.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No saved presets yet. Customize below and hit Save.
+                  </p>
+                )}
+                {savedPresets.map((preset) => {
+                  const selected = editingId === preset.id;
+                  return (
+                    <div
+                      key={preset.id}
+                      className={`flex items-center gap-1 rounded-xl border pl-3 pr-1 py-1.5 ${
+                        selected
+                          ? "border-primary bg-primary/10"
+                          : "border-border bg-card/70"
+                      }`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => applySavedPreset(preset)}
+                        className="flex items-center gap-2 text-left"
+                      >
+                        <span>{preset.emoji}</span>
+                        <span className="text-sm font-medium">{preset.name}</span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Duplicate"
+                        onClick={() => void handleDuplicatePreset(preset)}
+                        className="ml-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                      >
+                        ⧉
+                      </button>
+                      <button
+                        type="button"
+                        title="Delete"
+                        onClick={() => void handleDeletePreset(preset.id)}
+                        className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <div className="min-w-[180px] flex-1">
+                  <Label>Preset name</Label>
+                  <input
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    placeholder="Name this preset"
+                    className="field mt-1.5 focus:field-focus"
+                    maxLength={60}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleSavePreset()}
+                  disabled={status.kind === "busy"}
+                  className="min-h-11 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
+                >
+                  {editingId ? "Update preset" : "Save as preset"}
+                </button>
+              </div>
+            </>
+          )}
         </section>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
@@ -236,12 +487,10 @@ function PresenceStudio() {
               />
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field
+                <ImagePicker
                   label="Large image"
-                  hint="Image URL or an asset name from your app"
                   value={draft.largeImage}
                   onChange={(v) => set("largeImage", v)}
-                  placeholder="https://…/cover.png"
                 />
                 <Field
                   label="Large image hover text"
@@ -249,11 +498,10 @@ function PresenceStudio() {
                   onChange={(v) => set("largeText", v)}
                   placeholder="Now playing"
                 />
-                <Field
+                <ImagePicker
                   label="Small image"
                   value={draft.smallImage}
                   onChange={(v) => set("smallImage", v)}
-                  placeholder="https://…/badge.png"
                 />
                 <Field
                   label="Small image hover text"
