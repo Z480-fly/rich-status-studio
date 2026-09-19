@@ -10,33 +10,44 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPresenceImageNameRoute =
+  ApiPublicPresenceImageNameRouteImport.update({
+    id: '/api/public/presence-image/$name',
+    path: '/api/public/presence-image/$name',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths: '/' | '/api/public/presence-image/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/' | '/api/public/presence-image/$name'
+  id: '__root__' | '/' | '/api/public/presence-image/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -48,11 +59,19 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/presence-image/$name': {
+      id: '/api/public/presence-image/$name'
+      path: '/api/public/presence-image/$name'
+      fullPath: '/api/public/presence-image/$name'
+      preLoaderRoute: typeof ApiPublicPresenceImageNameRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
