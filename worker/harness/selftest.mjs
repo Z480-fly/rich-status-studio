@@ -255,8 +255,11 @@ test("multiple users are reconciled independently", async () => {
       byUser["tok-a"].map((c) => c.op),
       ["apply"],
     );
-    assert.equal(discord.calls.filter((c) => c.op === "clear").length, 0,
-      "stopped user was never running here — nothing to clear");
+    assert.equal(
+      discord.calls.filter((c) => c.op === "clear").length,
+      0,
+      "stopped user was never running here — nothing to clear",
+    );
     assert.equal(await pollOnce(), 2);
   });
 });

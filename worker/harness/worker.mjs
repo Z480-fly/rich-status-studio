@@ -109,9 +109,11 @@ export function createWorker({
 
     const revision = Number(session?.revision ?? 0);
     const desired = session?.desired_state === "running" ? "running" : "stopped";
-    const prev =
-      sessions.get(userId) ??
-      { revision: -1, desiredState: "", appliedActivityJson: "" };
+    const prev = sessions.get(userId) ?? {
+      revision: -1,
+      desiredState: "",
+      appliedActivityJson: "",
+    };
 
     let state;
     let message = null;
@@ -119,8 +121,7 @@ export function createWorker({
     if (desired === "running") {
       const activity = session?.activity ?? null;
       const activityJson = JSON.stringify(activity);
-      const needsApply =
-        revision !== prev.revision || prev.appliedActivityJson !== activityJson;
+      const needsApply = revision !== prev.revision || prev.appliedActivityJson !== activityJson;
       if (needsApply) {
         try {
           await discord.apply(session.access_token, activity);
@@ -178,9 +179,7 @@ export async function main({ env = process.env } = {}) {
   const apiBase = env.ZORA_API_BASE;
   const secret = env.WORKER_SHARED_SECRET;
   if (!apiBase || !secret) {
-    console.error(
-      "ZORA_API_BASE and WORKER_SHARED_SECRET are required. See worker/README.md.",
-    );
+    console.error("ZORA_API_BASE and WORKER_SHARED_SECRET are required. See worker/README.md.");
     process.exitCode = 1;
     return;
   }
@@ -215,8 +214,7 @@ export async function main({ env = process.env } = {}) {
 const invokedAsCli = (() => {
   try {
     return (
-      !!process.argv[1] &&
-      pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url
+      !!process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url
     );
   } catch {
     return false;
