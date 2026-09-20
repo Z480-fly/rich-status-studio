@@ -12,6 +12,8 @@ async function currentUser(): Promise<string | null> {
   return sessionUser(readSessionCookie(getRequestHeader("cookie")));
 }
 
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+
 export interface ServerPresenceStatus {
   linked: boolean;
   username: string | null;
@@ -19,7 +21,7 @@ export interface ServerPresenceStatus {
   workerState: string;
   workerMessage: string | null;
   workerSeenSecondsAgo: number | null;
-  activity: Record<string, unknown> | null;
+  activity: Json | null;
 }
 
 /** Builds the Discord OAuth2 URL the phone should open to link the account. */
@@ -71,27 +73,27 @@ export const getServerPresenceStatus = createServerFn({ method: "GET" }).handler
       workerSeenSecondsAgo: heartbeat
         ? Math.round((Date.now() - new Date(heartbeat).getTime()) / 1000)
         : null,
-      activity: (session?.activity as Record<string, unknown> | null) ?? null,
+      activity: (session?.activity as Json | null) ?? null,
     };
   },
 );
 
-function validateActivity(input: { activity: Record<string, unknown> }) {
+function validateActivity(input: { activity: Record<string, Json> }) {
   if (!input?.activity || typeof input.activity !== "object") {
     throw new Error("Nothing to publish.");
   }
   // Only fields Discord actually accepts for rich presence.
   const allowed = ["type", "details", "state", "timestamps", "assets", "party"] as const;
-  const activity: Record<string, unknown> = {};
+  const activity: Record<string, Json> = {};
   for (const key of allowed) {
-    if (key in input.activity) activity[key] = (input.activity as Record<string, unknown>)[key];
+    if (key in input.activity) activity[key] = input.activity[key] as Json;
   }
   return { activity };
 }
 
 async function writeDesiredState(
   desired: "running" | "stopped",
-  activity: Record<string, unknown> | null,
+  activity: Record<string, Json> | null,
 ) {
   const userId = await currentUser();
   if (!userId) throw new Error("Link your Discord account first.");
