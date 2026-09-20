@@ -12,6 +12,8 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicDiscordCallbackRouteImport } from './routes/api/public/discord/callback'
 import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
+import { Route as ApiPublicWorkerHeartbeatRouteImport } from './routes/api/public/worker/heartbeat'
+import { Route as ApiPublicWorkerPollRouteImport } from './routes/api/public/worker/poll'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -30,40 +32,70 @@ const ApiPublicPresenceImageNameRoute =
     path: '/api/public/presence-image/$name',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicWorkerHeartbeatRoute =
+  ApiPublicWorkerHeartbeatRouteImport.update({
+    id: '/api/public/worker/heartbeat',
+    path: '/api/public/worker/heartbeat',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicWorkerPollRoute = ApiPublicWorkerPollRouteImport.update({
+  id: '/api/public/worker/poll',
+  path: '/api/public/worker/poll',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
+  '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
+  '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
+  '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/api/public/discord/callback' | '/api/public/presence-image/$name'
+    | '/'
+    | '/api/public/discord/callback'
+    | '/api/public/presence-image/$name'
+    | '/api/public/worker/heartbeat'
+    | '/api/public/worker/poll'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api/public/discord/callback' | '/api/public/presence-image/$name'
+  to:
+    | '/'
+    | '/api/public/discord/callback'
+    | '/api/public/presence-image/$name'
+    | '/api/public/worker/heartbeat'
+    | '/api/public/worker/poll'
   id:
     | '__root__'
     | '/'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
+    | '/api/public/worker/heartbeat'
+    | '/api/public/worker/poll'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicDiscordCallbackRoute: typeof ApiPublicDiscordCallbackRoute
   ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
+  ApiPublicWorkerHeartbeatRoute: typeof ApiPublicWorkerHeartbeatRoute
+  ApiPublicWorkerPollRoute: typeof ApiPublicWorkerPollRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -89,6 +121,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPresenceImageNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/worker/heartbeat': {
+      id: '/api/public/worker/heartbeat'
+      path: '/api/public/worker/heartbeat'
+      fullPath: '/api/public/worker/heartbeat'
+      preLoaderRoute: typeof ApiPublicWorkerHeartbeatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/worker/poll': {
+      id: '/api/public/worker/poll'
+      path: '/api/public/worker/poll'
+      fullPath: '/api/public/worker/poll'
+      preLoaderRoute: typeof ApiPublicWorkerPollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -96,6 +142,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicDiscordCallbackRoute: ApiPublicDiscordCallbackRoute,
   ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,
+  ApiPublicWorkerHeartbeatRoute: ApiPublicWorkerHeartbeatRoute,
+  ApiPublicWorkerPollRoute: ApiPublicWorkerPollRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

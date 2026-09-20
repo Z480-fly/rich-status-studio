@@ -1,0 +1,19 @@
+[Unit]
+Description=Zora Discord presence worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/zora-presence-worker
+ExecStart=/opt/zora-presence-worker/zora-presence-worker
+EnvironmentFile=/opt/zora-presence-worker/.env
+Environment=LD_LIBRARY_PATH=/opt/zora-presence-worker/lib
+Restart=always
+RestartSec=5
+User=zora
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
