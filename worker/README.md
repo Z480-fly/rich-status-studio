@@ -74,6 +74,13 @@ Copy `.env.example` to `.env`:
    ```
 5. Run: `./build/zora-presence-worker` (reads `.env` from the working directory)
 
+Without the SDK in `third_party/`, CMake still builds a **dry-run** binary: the
+same poll/reconcile/heartbeat loop, logging the presence updates it would push
+instead of calling Discord. All SDK-specific calls live in the adapter block in
+`worker/src/main.cpp` — after unzipping your SDK, re-check the `TODO(verify)`
+markers there against your version's `discordpp.h` (the SDK cannot be compiled
+or verified from this repository, since the download is gated).
+
 ### Run as a service
 
 ```bash
@@ -90,6 +97,15 @@ native SDK:
 
 ```bash
 ZORA_API_BASE=http://localhost:8080 WORKER_SHARED_SECRET=… node harness/worker.mjs
+```
+
+`harness/selftest.mjs` runs that loop against an in-memory mock of both
+endpoints and asserts the documented contract — bearer auth, apply on
+revision change, no-op when unchanged, clear-once on stop, error heartbeats
+with retry, and token freshness:
+
+```bash
+node harness/selftest.mjs   # or: bun run test:worker from the repo root
 ```
 
 ## Known risks / things that can stop the native worker working

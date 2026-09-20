@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ACTIVITY_TYPES,
   PRESETS,
@@ -24,6 +24,15 @@ import {
   saveSavedPreset,
   type SavedPreset,
 } from "@/lib/presets.functions";
+import {
+  getDiscordLinkUrl,
+  getServerPresenceStatus,
+  startServerPresence,
+  stopServerPresence,
+  updateServerPresence,
+  type Json,
+  type ServerPresenceStatus,
+} from "@/lib/server-presence.functions";
 import { ImagePicker } from "@/components/ImagePicker";
 
 export const Route = createFileRoute("/")({
@@ -68,6 +77,22 @@ function describeError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Human label for the worker states the heartbeat endpoint accepts. */
+function serverWorkerLabel(state: string): string {
+  switch (state) {
+    case "running":
+      return "Presence live via worker";
+    case "connecting":
+      return "Worker connecting…";
+    case "cleared":
+      return "Worker standing by";
+    case "error":
+      return "Worker error";
+    default:
+      return "No worker activity yet";
+  }
+}
+
 function PresenceStudio() {
   const [presetId, setPresetId] = useState("music");
   const [draft, setDraft] = useState<PresenceDraft>(
@@ -84,6 +109,51 @@ function PresenceStudio() {
   const [savedLoading, setSavedLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Server presence (drive the Linux worker): link status + worker heartbeat.
+  const [sp, setSp] = useState<ServerPresenceStatus | null>(null);
+  const [spBusy, setSpBusy] = useState(false);
+
+  const refreshServerPresence = useCallback(async () => {
+    try {
+      setSp(await getServerPresenceStatus());
+    } catch {
+      /* non-fatal: the panel keeps showing its last known state */
+    }
+  }, []);
+
+  // Poll worker liveness; refresh immediately when the tab regains focus.
+  useEffect(() => {
+    void refreshServerPresence();
+    const timer = window.setInterval(() => void refreshServerPresence(), 10_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void refreshServerPresence();
+    };
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refreshServerPresence]);
+
+  // The OAuth callback redirects back here with ?link=ok|error.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const link = params.get("link");
+    if (link !== "ok" && link !== "error") return;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (link === "ok") {
+      setStatus({ kind: "ok", message: "Discord account linked. Server presence is available." });
+      void refreshServerPresence();
+    } else {
+      setStatus({
+        kind: "error",
+        message: `Discord linking failed: ${params.get("reason") ?? "unknown error"}`,
+      });
+    }
+  }, [refreshServerPresence]);
 
   useEffect(() => {
     setInDiscord(isInsideDiscord());
@@ -287,6 +357,76 @@ function PresenceStudio() {
     }
   };
 
+  // ---- Server presence (Linux worker control plane) ----
+
+  /** JSON-safe activity; the server function prunes it to the fields Discord accepts. */
+  const buildServerActivity = () => buildActivityPayload(draft) as Record<string, Json>;
+
+  const handleLinkDiscord = async () => {
+    setSpBusy(true);
+    try {
+      const { url } = await getDiscordLinkUrl();
+      window.location.href = url;
+    } catch (error) {
+      setSpBusy(false);
+      setStatus({
+        kind: "error",
+        message: describeError(error, "Could not start Discord linking."),
+      });
+    }
+  };
+
+  const handleServerStart = async () => {
+    setSpBusy(true);
+    try {
+      await startServerPresence({ data: { activity: buildServerActivity() } });
+      await refreshServerPresence();
+      setStatus({ kind: "ok", message: "Go-live requested — the worker is applying it now." });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: describeError(error, "Could not start server presence."),
+      });
+    } finally {
+      setSpBusy(false);
+    }
+  };
+
+  const handleServerUpdate = async () => {
+    setSpBusy(true);
+    try {
+      await updateServerPresence({ data: { activity: buildServerActivity() } });
+      await refreshServerPresence();
+      setStatus({
+        kind: "ok",
+        message: "Update sent — the worker will pick it up within seconds.",
+      });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: describeError(error, "Could not update server presence."),
+      });
+    } finally {
+      setSpBusy(false);
+    }
+  };
+
+  const handleServerStop = async () => {
+    setSpBusy(true);
+    try {
+      await stopServerPresence();
+      await refreshServerPresence();
+      setStatus({ kind: "ok", message: "Stop requested — the worker is clearing your presence." });
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: describeError(error, "Could not stop server presence."),
+      });
+    } finally {
+      setSpBusy(false);
+    }
+  };
+
   return (
     <main className="min-h-screen px-4 py-8 sm:px-8 lg:px-12">
       <div className="mx-auto max-w-6xl">
@@ -336,6 +476,114 @@ function PresenceStudio() {
             channel to actually go live.
           </div>
         )}
+
+        {/* Server presence: link + worker-driven Rich Presence */}
+        <section className="panel mt-6 p-5 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Server presence</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                Keeps your status running after you leave the Activity. A Linux worker applies it
+                through Discord's Social SDK — link your account once, then go live from here.
+              </p>
+            </div>
+            {sp?.linked && sp.username && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Linked as {sp.username}
+              </span>
+            )}
+          </div>
+
+          {!sp ? (
+            <p className="mt-4 text-sm text-muted-foreground">Checking link status…</p>
+          ) : !sp.linked ? (
+            <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+              <button
+                type="button"
+                onClick={() => void handleLinkDiscord()}
+                disabled={spBusy}
+                className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                Link Discord account
+              </button>
+              <span className="text-xs text-muted-foreground">
+                One-time Discord OAuth — only <code>identify</code> and the presence scope are
+                requested. No password, no user token.
+              </span>
+            </div>
+          ) : (
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {sp.desiredState === "running" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => void handleServerUpdate()}
+                      disabled={spBusy}
+                      className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                      Push this update
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleServerStop()}
+                      disabled={spBusy}
+                      className="min-h-11 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
+                    >
+                      Stop
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void handleServerStart()}
+                    disabled={spBusy}
+                    className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                  >
+                    Go live with this draft
+                  </button>
+                )}
+                <span className="text-xs text-muted-foreground">
+                  Uses the draft below
+                  {sp.desiredState === "running" ? " — changes apply on push" : ""}
+                </span>
+              </div>
+
+              <div className="rounded-xl border border-border bg-background/60 p-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <span className="inline-flex items-center gap-2 font-medium">
+                    <span
+                      className={`size-2 rounded-full ${
+                        sp.workerState === "running"
+                          ? "animate-pulse bg-primary"
+                          : sp.workerState === "connecting"
+                            ? "animate-pulse bg-amber-500"
+                            : sp.workerState === "error"
+                              ? "bg-destructive"
+                              : "bg-muted-foreground"
+                      }`}
+                    />
+                    {serverWorkerLabel(sp.workerState)}
+                  </span>
+                  {sp.workerSeenSecondsAgo != null && (
+                    <span className="text-xs text-muted-foreground">
+                      Worker seen {sp.workerSeenSecondsAgo}s ago
+                    </span>
+                  )}
+                </div>
+                {sp.workerMessage && (
+                  <p
+                    className={`mt-1 break-words text-xs ${
+                      sp.workerState === "error" ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {sp.workerMessage}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
@@ -393,9 +641,7 @@ function PresenceStudio() {
                     <div
                       key={preset.id}
                       className={`flex items-center gap-1 rounded-xl border pl-3 pr-1 py-1.5 ${
-                        selected
-                          ? "border-primary bg-primary/10"
-                          : "border-border bg-card/70"
+                        selected ? "border-primary bg-primary/10" : "border-border bg-card/70"
                       }`}
                     >
                       <button
