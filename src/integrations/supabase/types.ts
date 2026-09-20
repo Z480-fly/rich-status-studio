@@ -14,6 +14,112 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_sessions: {
+        Row: {
+          created_at: string
+          discord_user_id: string
+          expires_at: string
+          token: string
+        }
+        Insert: {
+          created_at?: string
+          discord_user_id: string
+          expires_at?: string
+          token: string
+        }
+        Update: {
+          created_at?: string
+          discord_user_id?: string
+          expires_at?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_sessions_discord_user_id_fkey"
+            columns: ["discord_user_id"]
+            isOneToOne: false
+            referencedRelation: "discord_accounts"
+            referencedColumns: ["discord_user_id"]
+          },
+        ]
+      }
+      discord_accounts: {
+        Row: {
+          access_token: string
+          created_at: string
+          discord_user_id: string
+          expires_at: string
+          refresh_token: string
+          scope: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          discord_user_id: string
+          expires_at: string
+          refresh_token: string
+          scope?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          discord_user_id?: string
+          expires_at?: string
+          refresh_token?: string
+          scope?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
+      presence_sessions: {
+        Row: {
+          activity: Json | null
+          created_at: string
+          desired_state: string
+          discord_user_id: string
+          revision: number
+          updated_at: string
+          worker_heartbeat_at: string | null
+          worker_message: string | null
+          worker_state: string
+        }
+        Insert: {
+          activity?: Json | null
+          created_at?: string
+          desired_state?: string
+          discord_user_id: string
+          revision?: number
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_message?: string | null
+          worker_state?: string
+        }
+        Update: {
+          activity?: Json | null
+          created_at?: string
+          desired_state?: string
+          discord_user_id?: string
+          revision?: number
+          updated_at?: string
+          worker_heartbeat_at?: string | null
+          worker_message?: string | null
+          worker_state?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presence_sessions_discord_user_id_fkey"
+            columns: ["discord_user_id"]
+            isOneToOne: true
+            referencedRelation: "discord_accounts"
+            referencedColumns: ["discord_user_id"]
+          },
+        ]
+      }
       presets: {
         Row: {
           accent: string
