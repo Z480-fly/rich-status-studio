@@ -1,0 +1,82 @@
+#cloud-config
+#
+# Zora presence worker — Oracle Cloud Always Free first-boot setup (no terminal).
+#
+# ---------------------------------------------------------------------------
+# WHAT TO CREATE IN THE ORACLE CONSOLE
+# ---------------------------------------------------------------------------
+#   Region / tenancy : any (Always Free resources live in your home region)
+#   Shape            : VM.Standard.E2.1.Micro      ← AMD x86-64
+#                      (do NOT pick VM.Standard.A1.Flex: the official Discord
+#                       Social SDK ships a Linux library for x86-64 only, so
+#                       ARM instances cannot run this worker at all)
+#   Image            : Ubuntu 24.04 (or 22.04) — an "Always Free Eligible" image
+#   Boot volume      : default (the SDK archive needs ~3 GB while it unpacks)
+#   SSH keys         : optional — the worker makes only outbound connections
+#   Field            : Create instance → Show advanced options → Management →
+#                      Cloud-init script, then paste this whole file
+#
+# ---------------------------------------------------------------------------
+# BEFORE PASTING: fill in the placeholders in /etc/zora-worker-setup.env below
+# ---------------------------------------------------------------------------
+#   ZORA_API_BASE         the deployed Zora app URL, e.g. https://…lovable.app
+#   WORKER_SHARED_SECRET  the same value the web app uses for the worker API
+#   SDK_URL               (optional) Google Drive link to the official Discord
+#                         Social SDK zip, or an already-extracted directory.
+#                         Leave empty → the worker installs in dry-run mode and
+#                         publishes nothing, which is a safe way to test first.
+#   RUNNER_TOKEN          (optional) GitHub → repo → Settings → Actions →
+#                         Runners → New self-hosted runner. When set, build logs
+#                         and redeploys become visible in the browser.
+#
+# SECURITY: instance user-data is readable through the metadata service by any
+# local process and by anyone with access to the tenancy. If you would rather
+# not leave the shared secret there, paste this with an empty
+# WORKER_SHARED_SECRET, let the first boot finish, then add the value to
+# /etc/zora-worker.env and restart the service.
+#
+# REPLACING AN INSTANCE: if the instance is ever reclaimed (Oracle may reclaim
+# Always Free instances that sit idle — see worker/deploy/ORACLE-ALWAYS-FREE.md),
+# create a new one with this same blob and it rebuilds itself from scratch.
+
+write_files:
+  - path: /etc/zora-worker-setup.env
+    owner: root:root
+    permissions: "0600"
+    content: |
+      # Read by worker/deploy/oracle-firstboot.sh on first boot, which passes it
+      # to bootstrap.sh. It is never echoed to a log and never enters the repo.
+      ZORA_API_BASE=<<<https://your-zora-app-url>>>
+      WORKER_SHARED_SECRET=<<<paste the WORKER_SHARED_SECRET value>>>
+
+      # Optional — link to the official Discord Social SDK zip (a Google Drive
+      # share link works) or a path to an already-extracted SDK directory.
+      # Leave empty to install in dry-run mode and switch later by re-running
+      # worker/deploy/oracle-firstboot.sh with this filled in.
+      SDK_URL=
+
+      # Optional — uncomment and paste a runner registration token to have the
+      # build and its logs appear under GitHub → Actions → "Deploy worker".
+      # RUNNER_TOKEN=
+      #
+      # Optional overrides:
+      # BRANCH=main
+      # POLL_INTERVAL_MS=15000
+
+runcmd:
+  # No `set -x` on purpose: it would echo the shared secret into the boot log.
+  - |
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq || true
+    apt-get install -y --no-install-recommends ca-certificates curl git || true
+    curl -fsSL --retry 3 --retry-delay 2 \
+      "https://raw.githubusercontent.com/Z480-fly/rich-status-studio/main/worker/deploy/oracle-firstboot.sh" \
+      -o /usr/local/sbin/zora-oracle-firstboot.sh
+    chmod 0755 /usr/local/sbin/zora-oracle-firstboot.sh
+    bash /usr/local/sbin/zora-oracle-firstboot.sh
+
+# The driver logs everything to /var/log/zora-firstboot.log as well as to
+# cloud-init's own output, and finishes by printing the build mode, the service
+# state and whether the Zora API was reachable.
+final_message: "Zora worker first boot complete — check the Zora app's Server presence page for live worker status."

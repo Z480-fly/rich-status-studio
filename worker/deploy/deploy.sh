@@ -121,12 +121,30 @@ need_tools() {
   fi
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq || warn "apt-get update failed; trying to continue"
-  # libasound2-dev is required by CMake in native mode; the pulse/X11 runtime
-  # libraries are what libdiscord_partner_sdk.so itself links against.
-  apt-get install -y --no-install-recommends \
-    git cmake build-essential pkg-config ca-certificates curl \
-    libcurl4-openssl-dev libasound2-dev libpulse0 libx11-6 unzip \
-    || fail "apt-get install failed"
+  # libasound2-dev is required by CMake in native mode; the pulse/X11/atomic
+  # runtime libraries are what libdiscord_partner_sdk.so itself links against.
+  # Ubuntu 24.04 renamed several of these with a t64 suffix, so install the
+  # subset this release actually provides and fall back to the historical names.
+  PKG_CANDIDATES=(
+    git cmake build-essential pkg-config ca-certificates curl
+    libcurl4-openssl-dev libasound2-dev
+    libpulse0 libpulse0t64 libx11-6 libasound2 libasound2t64
+    libatomic1 libcurl4 libcurl4t64 unzip
+  )
+  PKG_LIST=()
+  for pkg in "${PKG_CANDIDATES[@]}"; do
+    if apt-cache show "$pkg" >/dev/null 2>&1; then
+      PKG_LIST+=("$pkg")
+    fi
+  done
+  if [ "${#PKG_LIST[@]}" -eq 0 ]; then
+    warn "apt-cache returned nothing — falling back to the historical package list"
+    PKG_LIST=(
+      git cmake build-essential pkg-config ca-certificates curl
+      libcurl4-openssl-dev libasound2-dev libpulse0 libx11-6 unzip
+    )
+  fi
+  apt-get install -y --no-install-recommends "${PKG_LIST[@]}" || fail "apt-get install failed"
 }
 
 need_tools
