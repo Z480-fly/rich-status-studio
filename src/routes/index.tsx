@@ -771,7 +771,7 @@ function PresenceStudio() {
             <div className="mt-5 space-y-5">
               <div>
                 <Label>Activity type</Label>
-                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
                   {ACTIVITY_TYPES.map((t) => (
                     <button
                       key={t.value}
@@ -1101,7 +1101,7 @@ function PresenceCard({
   return (
     <div className="mt-4 rounded-2xl border border-border bg-background/70 p-4">
       <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-        {verb || "Custom"}
+        {verb}
       </p>
       <div className="mt-3 flex gap-3">
         <div className="relative shrink-0">

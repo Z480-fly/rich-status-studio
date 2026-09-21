@@ -9,14 +9,14 @@
 
 import { PUBLIC_SITE_ORIGIN } from "./site";
 
-export type ActivityTypeValue = 0 | 1 | 2 | 3 | 4 | 5;
+export type ActivityTypeValue = 0 | 1 | 2 | 3 | 5;
 
 /**
  * The verb Discord renders above the status, one per activity type.
  *
- * "Custom" (4) has no fixed verb: Discord renders it in the modern client as
- * a plain highlighted line with the details text. The streaming verb only
- * applies when the payload also carries a Twitch URL — see STREAMING_URL.
+ * Streaming only applies when the payload also carries a Twitch URL — see
+ * STREAMING_URL. Type 4 (Custom) is excluded: the Social SDK's
+ * UpdateRichPresence rejects it with "Invalid enum value".
  */
 export const ACTIVITY_TYPES: { value: ActivityTypeValue; label: string; verb: string }[] = [
   { value: 0, label: "Playing", verb: "Playing" },
@@ -24,7 +24,6 @@ export const ACTIVITY_TYPES: { value: ActivityTypeValue; label: string; verb: st
   { value: 2, label: "Listening", verb: "Listening to" },
   { value: 3, label: "Watching", verb: "Watching" },
   { value: 5, label: "Competing", verb: "Competing in" },
-  { value: 4, label: "Custom", verb: "" },
 ];
 
 /** Type 1 renders as Streaming only with a Twitch URL attached to the payload. */
