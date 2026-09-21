@@ -132,6 +132,13 @@ journalctl -u zora-presence-worker -f
 If you cannot get a shell on the VM (broken console, IPv6-only host, no SSH),
 use the credential-free bootstrap in [`deploy/README.md`](deploy/README.md).
 
+For a **managed always-on container** (no VM, no SSH), see
+[`deploy/NORTHFLANK.md`](deploy/NORTHFLANK.md): Northflank builds this
+repository's [`Dockerfile`](Dockerfile), runs it as one background service and
+exposes build/runtime logs, so the only actions left are creating the account and
+supplying the SDK link. The deploy script there also validates its payloads
+against Northflank's live API spec before touching anything.
+
 For a **free-forever 24/7 host you can provision entirely from a browser**, see
 [`deploy/ORACLE-ALWAYS-FREE.md`](deploy/ORACLE-ALWAYS-FREE.md): create one
 `VM.Standard.E2.1.Micro` instance (AMD x86-64) and paste

@@ -1,0 +1,12 @@
+# Never send local build output or a locally staged proprietary SDK to the
+# builder. The image fetches the SDK from DISCORD_SOCIAL_SDK_URL instead.
+build/
+third_party/
+sdk.zip
+*.o
+*.log
+
+# Host deployment tooling is not part of the image.
+deploy/
+harness/
+README.md
