@@ -150,6 +150,35 @@ export function normalizeHex(value: string | null | undefined): string | null {
 }
 
 /**
+ * Inline styles that tint the studio with the chosen hex colour.
+ *
+ * Discord's presence payload has no colour field, so the colour shows up in
+ * two places: as the profile artwork (see `swatchPath`) and here, as the
+ * dashboard's own background and top glow. Both return `undefined` for an
+ * invalid or absent colour so the page falls back to the unthemed look
+ * instead of a broken CSS value.
+ */
+export function studioBackgroundStyle(
+  hex: string | null | undefined,
+): { backgroundColor: string } | undefined {
+  const color = normalizeHex(hex);
+  return color
+    ? { backgroundColor: `color-mix(in srgb, ${color} 7%, var(--background))` }
+    : undefined;
+}
+
+export function studioGlowStyle(
+  hex: string | null | undefined,
+): { opacity: number; background: string } | undefined {
+  const color = normalizeHex(hex);
+  if (!color) return undefined;
+  return {
+    opacity: 1,
+    background: `radial-gradient(60% 100% at 50% 0%, color-mix(in srgb, ${color} 26%, transparent), transparent 70%)`,
+  };
+}
+
+/**
  * Public URL of the generated colour swatch.
  *
  * Discord's presence payload has no colour field, so a chosen colour is
