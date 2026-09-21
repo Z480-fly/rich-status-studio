@@ -26,6 +26,9 @@
 
 #include <curl/curl.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -43,6 +46,9 @@
 #include <vector>
 
 #ifdef ZORA_HAVE_DISCORD_SDK
+// discordpp.h is a generated single-header wrapper. Its implementation must be
+// emitted in exactly one translation unit, as required by the SDK C++ guide.
+#define DISCORDPP_IMPLEMENTATION
 #include <discordpp.h>
 #endif
 
@@ -494,10 +500,10 @@ Config loadConfig() {
 // Without it, the pool logs what it would push (dry-run) and succeeds, so the
 // control plane can be exercised end-to-end with the live API.
 //
-// NOTE(verify-against-headers): the SDK is a gated download and cannot be
-// compiled here, so every discordpp call below is marked TODO(verify) —
-// confirm the names against include/discordpp.h of the SDK version you
-// downloaded and adjust in place. The JSON extraction feeding them is final.
+// The calls below match the actual Social SDK headers (discordpp.h) shipped in
+// third_party/discord_social_sdk: Client::UpdateToken + Client::Connect with
+// SetStatusChangedCallback, discordpp::Activity built via its Set* methods,
+// Client::UpdateRichPresence(activity, callback) and Client::ClearRichPresence().
 // ---------------------------------------------------------------------------
 
 constexpr size_t kMaxLoggedJson = 300;
@@ -509,18 +515,20 @@ std::string briefJson(const JValue& value) {
   return json;
 }
 
-long long msToUnixSeconds(double ms) {
-  // The web app stores epoch milliseconds (Date.now()); the Social SDK
-  // timestamps are in seconds — TODO(verify) — so large values are converted.
-  if (ms > 1e12) return (long long)std::llround(ms / 1000.0);
-  return (long long)std::llround(ms);
+uint64_t timestampForSdk(double value) {
+  // SDK 1.10.19337 accepts Unix milliseconds and also tolerates small Unix
+  // second values. The API stores Date.now() values, so preserve them exactly.
+  return static_cast<uint64_t>(std::llround(value));
 }
 
 #ifdef ZORA_HAVE_DISCORD_SDK
 
+/// One connected Discord client per user. The SDK drives its own websocket;
+/// we only feed it tokens and activity updates.
 struct DiscordSession {
-  discordpp::Client client;  // TODO(verify): client type from discordpp.h
-  bool connected = false;
+  discordpp::Client client;
+  bool connecting = false;
+  bool ready = false;
 };
 
 class DiscordPool {
@@ -528,59 +536,64 @@ class DiscordPool {
   bool apply(const std::string& userId, const std::string& token,
              const JValue& activity, std::string* error) {
     DiscordSession& session = sessions_[userId];
-    if (!session.connected) {
-      // TODO(verify): authorize the gateway with the OAuth access token
-      // (scope sdk.social_layer_presence — see README "Known risks"). Flip
-      // `connected` on the gateway-ready event instead of optimistically.
-      discordpp::AuthorizationArgs args{};
-      args.AccessToken = token;          // TODO(verify): field name
-      session.client.OpenGateway(args);  // TODO(verify): call signature
-      session.connected = true;
-    }
+    ensureConnected(&session, userId, token);
 
-    // Map the server-validated activity JSON onto the SDK struct.
-    // TODO(verify): field names/types below against your discordpp.h.
+    // Map the server-validated activity JSON onto the SDK struct using the
+    // Activity setters from discordpp.h (partial activity: the SDK fills in
+    // name/applicationId itself).
     discordpp::Activity a{};
     if (const JValue* v = activity.find("type"); v && v->type == JValue::Type::Number) {
-      a.Type = static_cast<discordpp::ActivityType>((int)std::llround(v->number));
+      a.SetType(static_cast<discordpp::ActivityTypes>(
+          std::max(0, std::min(6, (int)std::llround(v->number)))));
     }
     if (const JValue* v = activity.find("details"); v && v->type == JValue::Type::String) {
-      a.Details = v->string;
+      a.SetDetails(v->string);
     }
     if (const JValue* v = activity.find("state"); v && v->type == JValue::Type::String) {
-      a.State = v->string;
+      a.SetState(v->string);
     }
     if (const JValue* ts = activity.find("timestamps"); ts && ts->type == JValue::Type::Object) {
+      discordpp::ActivityTimestamps stamps{};
       if (const JValue* v = ts->find("start"); v && v->type == JValue::Type::Number) {
-        a.Timestamps.Start = msToUnixSeconds(v->number);
+        stamps.SetStart(timestampForSdk(v->number));
       }
       if (const JValue* v = ts->find("end"); v && v->type == JValue::Type::Number) {
-        a.Timestamps.End = msToUnixSeconds(v->number);
+        stamps.SetEnd(timestampForSdk(v->number));
       }
+      a.SetTimestamps(std::move(stamps));
     }
     if (const JValue* assets = activity.find("assets"); assets && assets->type == JValue::Type::Object) {
+      discordpp::ActivityAssets art{};
       if (const JValue* v = assets->find("large_image"); v && v->type == JValue::Type::String)
-        a.Assets.LargeImage = v->string;
+        art.SetLargeImage(v->string);
       if (const JValue* v = assets->find("large_text"); v && v->type == JValue::Type::String)
-        a.Assets.LargeText = v->string;
+        art.SetLargeText(v->string);
       if (const JValue* v = assets->find("small_image"); v && v->type == JValue::Type::String)
-        a.Assets.SmallImage = v->string;
+        art.SetSmallImage(v->string);
       if (const JValue* v = assets->find("small_text"); v && v->type == JValue::Type::String)
-        a.Assets.SmallText = v->string;
+        art.SetSmallText(v->string);
+      a.SetAssets(std::move(art));
     }
     if (const JValue* party = activity.find("party"); party && party->type == JValue::Type::Object) {
       if (const JValue* size = party->find("size"); size && size->type == JValue::Type::Array &&
                                                    size->array.size() == 2) {
-        a.Party.Size.Current =
-            (int32_t)std::llround(size->array[0].number);
-        a.Party.Size.Max = (int32_t)std::llround(size->array[1].number);
+        discordpp::ActivityParty p{};
+        p.SetCurrentSize((int32_t)std::llround(size->array[0].number));
+        p.SetMaxSize((int32_t)std::llround(size->array[1].number));
+        a.SetParty(std::move(p));
       }
     }
 
-    // TODO(verify): result type — errors may instead arrive via a callback.
-    discordpp::ClientResult result = session.client.UpdateRichPresence(a);
-    if (result.Type() != discordpp::ClientResult::Type::Ok) {
-      *error = "UpdateRichPresence failed";  // TODO(verify): error detail access
+    std::atomic<bool> done{false};
+    std::string resultError;
+    session.client.UpdateRichPresence(std::move(a),
+        [&done, &resultError](discordpp::ClientResult result) {
+          if (!result.Successful()) resultError = result.ToString();
+          done.store(true);
+        });
+    waitForCallback(&done);
+    if (!resultError.empty()) {
+      *error = "UpdateRichPresence failed: " + resultError;
       return false;
     }
     return true;
@@ -589,17 +602,80 @@ class DiscordPool {
   bool clear(const std::string& userId, const std::string& token, std::string* error) {
     (void)token;
     auto it = sessions_.find(userId);
-    if (it == sessions_.end() || !it->second.connected) return true;  // nothing live
-    // TODO(verify): clear call + result handling.
-    discordpp::ClientResult result = it->second.client.ClearRichPresence();
-    if (result.Type() != discordpp::ClientResult::Type::Ok) {
-      *error = "ClearRichPresence failed";
-      return false;
+    if (it == sessions_.end()) return true;  // nothing live
+    if (!it->second.ready) {
+      // Not connected: nothing was ever applied, and connecting just to clear
+      // would leave a dangling client behind.
+      return true;
     }
+    it->second.client.ClearRichPresence();
     return true;
   }
 
  private:
+  void ensureConnected(DiscordSession* session, const std::string& userId,
+                       const std::string& token) {
+    if (session->ready || session->connecting) return;
+    session->connecting = true;
+
+    session->client.SetStatusChangedCallback(
+        [session, userId](discordpp::Client::Status status, discordpp::Client::Error error,
+                          int32_t errorDetail) {
+          if (status == discordpp::Client::Status::Ready) {
+            session->ready = true;
+            logLine("[discord] gateway ready for user " + userId);
+          } else if (status == discordpp::Client::Status::Disconnected ||
+                     status == discordpp::Client::Status::Disconnecting) {
+            session->ready = false;
+            session->connecting = false;
+            if (error != discordpp::Client::Error::None) {
+              logLine("[discord] gateway dropped for user " + userId + ": " +
+                      discordpp::Client::ErrorToString(error) + " detail=" +
+                      std::to_string(errorDetail));
+            }
+          }
+        });
+
+    // OAuth2 bearer token from the Zora API (scope includes the Social SDK
+    // presence scope — see README "Known risks"). Bearer is the only token
+    // type the SDK accepts for this flow.
+    std::atomic<bool> tokenDone{false};
+    std::string tokenError;
+    session->client.UpdateToken(discordpp::AuthorizationTokenType::Bearer, token,
+        [&tokenDone, &tokenError](discordpp::ClientResult result) {
+          if (!result.Successful()) tokenError = result.ToString();
+          tokenDone.store(true);
+        });
+    waitForCallback(&tokenDone);
+    if (!tokenError.empty()) {
+      session->connecting = false;
+      throw std::runtime_error("UpdateToken failed for user " + userId + ": " + tokenError);
+    }
+    session->client.Connect();
+    logLine("[discord] connecting gateway for user " + userId);
+
+    // Connect and all SDK callbacks are asynchronous. Pump the SDK event queue
+    // while waiting so the following presence update is not sent too early.
+    for (int i = 0; i < 300 && !session->ready; ++i) {
+      discordpp::RunCallbacks();
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    session->connecting = false;
+    if (!session->ready) {
+      throw std::runtime_error("Discord SDK connection timed out for user " + userId);
+    }
+  }
+
+  /// UpdateRichPresence/UpdateToken complete asynchronously on the SDK's own
+  /// threads; block briefly for the callback so the reconcile pass sees the
+  /// real result.
+  static void waitForCallback(std::atomic<bool>* done) {
+    for (int i = 0; i < 100 && !done->load(); ++i) {
+      discordpp::RunCallbacks();
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  }
+
   std::map<std::string, DiscordSession> sessions_;
 };
 
@@ -697,24 +773,34 @@ class Worker {
     if (running) {
       if (revision != prev.revision || prev.appliedActivityJson != activityJson) {
         std::string error;
-        if (discord_.apply(userId, token, activity ? *activity : JValue{}, &error)) {
-          state = "running";
-          prev.appliedActivityJson = activityJson;
-        } else {
+        try {
+          if (discord_.apply(userId, token, activity ? *activity : JValue{}, &error)) {
+            state = "running";
+            prev.appliedActivityJson = activityJson;
+          } else {
+            state = "error";
+            message = error.substr(0, 400);
+          }
+        } catch (const std::exception& e) {
           state = "error";
-          message = error.substr(0, 400);
+          message = std::string(e.what()).substr(0, 400);
         }
       } else {
         state = "running";  // unchanged — heartbeat keeps liveness
       }
     } else if (!prev.appliedActivityJson.empty()) {
       std::string error;
-      if (discord_.clear(userId, token, &error)) {
-        state = "cleared";
-        prev.appliedActivityJson.clear();
-      } else {
+      try {
+        if (discord_.clear(userId, token, &error)) {
+          state = "cleared";
+          prev.appliedActivityJson.clear();
+        } else {
+          state = "error";
+          message = error.substr(0, 400);
+        }
+      } catch (const std::exception& e) {
         state = "error";
-        message = error.substr(0, 400);
+        message = std::string(e.what()).substr(0, 400);
       }
     } else {
       state = "cleared";  // nothing applied — nothing to clear
@@ -793,6 +879,11 @@ int main() {
   curl_global_init(CURL_GLOBAL_DEFAULT);
   Worker worker(std::move(cfg));
   while (true) {
+#ifdef ZORA_HAVE_DISCORD_SDK
+    // The Social SDK delivers status and operation callbacks through this
+    // pump; keep it running even during polls with no activity changes.
+    discordpp::RunCallbacks();
+#endif
     try {
       worker.pollOnce();
     } catch (const std::exception& e) {
