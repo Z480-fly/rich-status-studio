@@ -28,6 +28,7 @@ import {
   saveSavedPreset,
   type SavedPreset,
 } from "@/lib/presets.functions";
+import { extractUrlMetadata } from "@/lib/url-metadata";
 import {
   getDiscordLinkUrl,
   getServerPresenceStatus,
@@ -117,6 +118,8 @@ function PresenceStudio() {
   const [savedLoading, setSavedLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [urlInput, setUrlInput] = useState("");
+  const [urlLoading, setUrlLoading] = useState(false);
 
   // Server presence (drive the Linux worker): link status + worker heartbeat.
   const [sp, setSp] = useState<ServerPresenceStatus | null>(null);
@@ -387,6 +390,33 @@ function PresenceStudio() {
         kind: "error",
         message: error instanceof Error ? error.message : "Could not delete.",
       });
+    }
+  };
+
+  // ---- URL metadata extraction ----
+
+  const handleExtractUrl = async () => {
+    if (!urlInput.trim()) return;
+    setUrlLoading(true);
+    try {
+      const { title, description, imageUrl, service } = await extractUrlMetadata({
+        data: { url: urlInput.trim() },
+      });
+      setDraft((d) => ({
+        ...d,
+        details: title || d.details,
+        state: description || d.state,
+        largeImage: imageUrl || d.largeImage,
+      }));
+      setStatus({ kind: "ok", message: `Filled from ${service}. Every field is still editable.` });
+      setUrlInput("");
+    } catch (error) {
+      setStatus({
+        kind: "error",
+        message: error instanceof Error ? error.message : "Couldn't read that URL.",
+      });
+    } finally {
+      setUrlLoading(false);
     }
   };
 
@@ -769,6 +799,34 @@ function PresenceStudio() {
             <h2 className="text-lg font-semibold">Customize</h2>
 
             <div className="mt-5 space-y-5">
+              <div className="rounded-xl border border-dashed border-border bg-background/50 p-3">
+                <Label>Quick fill from URL</Label>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Paste a YouTube, Spotify, or any link — Zora reads the page and fills the fields
+                  below. You keep full control to edit anything afterwards.
+                </p>
+                <div className="flex items-center gap-2">
+                  <input
+                    value={urlInput}
+                    onChange={(e) => setUrlInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void handleExtractUrl();
+                    }}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className="field flex-1 focus:field-focus"
+                    disabled={urlLoading}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleExtractUrl()}
+                    disabled={urlLoading || !urlInput.trim()}
+                    className="min-h-11 rounded-xl border border-border bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
+                  >
+                    {urlLoading ? "Extracting…" : "Extract"}
+                  </button>
+                </div>
+              </div>
+
               <div>
                 <Label>Activity type</Label>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
