@@ -68,7 +68,9 @@ Copy `.env.example` to `.env`:
    Portal for the application that owns the OAuth client (Applications → your
    app → Social SDK → Downloads). Accept Discord's SDK terms. The repository
    does not pin a public version because Discord distributes the SDK through the
-   authenticated Developer Portal.
+   authenticated Developer Portal. With the no-terminal path, pass its link as
+   `SDK_URL` and [`deploy/bootstrap.sh`](deploy/bootstrap.sh) stages it at
+   `/opt/discord_social_sdk` (see [`deploy/README.md`](deploy/README.md)).
 2. Extract it to `worker/third_party/discord_social_sdk/` (or pass
    `-DDISCORD_SDK_ROOT=/absolute/path/to/the/extracted/sdk`) and verify that the
    tree contains both `include/discordpp.h` and
@@ -119,6 +121,18 @@ Node contract harness remain available for CI and control-plane testing.
 sudo cp deploy/zora-presence-worker.service /etc/systemd/system/
 sudo systemctl enable --now zora-presence-worker
 journalctl -u zora-presence-worker -f
+```
+
+#### Host without a terminal
+
+If you cannot get a shell on the VM (broken console, IPv6-only host, no SSH),
+use the credential-free bootstrap in [`deploy/README.md`](deploy/README.md).
+One paste into the server panel's user-data field installs the packages, builds
+the worker, installs it as a systemd service, and schedules pull-based redeploys
+on every push to `main` — followed by one command for repeat runs:
+
+```bash
+bash worker/deploy/deploy.sh --force    # build + install + restart, idempotent
 ```
 
 ## Harness (no SDK required)

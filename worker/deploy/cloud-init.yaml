@@ -1,0 +1,42 @@
+#cloud-config
+#
+# Zora presence worker — no-terminal bootstrap for a fresh Ubuntu host.
+#
+# HOW TO USE
+#   1. Replace every <<<...>>> placeholder below.
+#   2. Paste this whole file into the server panel's "User Data", "cloud-init",
+#      "Startup script", or "Custom script" field, then apply it (usually by
+#      reinstalling or restarting the instance).
+#   3. Nothing else. No SSH, no inbound port, no key, no token.
+#
+# What it does: installs git, clones the public repository, and runs
+# worker/deploy/bootstrap.sh, which installs the worker as a systemd service and
+# schedules pull-based redeploys on every push to main.
+#
+# SECURITY: user-data can be readable through the cloud metadata service, so if
+# you would rather not put the shared secret here, leave WORKER_SHARED_SECRET
+# empty, let the bootstrap finish, and add the two lines to /etc/zora-worker.env
+# from the browser console instead.
+
+write_files:
+  - path: /etc/zora-worker.env
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ZORA_API_BASE=<<<https://your-zora-app-url>>>
+      WORKER_SHARED_SECRET=<<<paste the WORKER_SHARED_SECRET value>>>
+
+runcmd:
+  # No `set -x` on purpose: it would echo the shared secret into the boot log.
+  - |
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update
+    apt-get install -y --no-install-recommends ca-certificates git
+    rm -rf /opt/rich-status-studio
+    git clone --depth 1 --branch main \
+      https://github.com/Z480-fly/rich-status-studio.git /opt/rich-status-studio
+    set -a
+    . /etc/zora-worker.env
+    set +a
+    bash /opt/rich-status-studio/worker/deploy/bootstrap.sh

@@ -1,0 +1,12 @@
+[Unit]
+Description=Re-deploy the Zora presence worker when main changes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+Persistent=true
+Unit=zora-worker-update.service
+
+[Install]
+WantedBy=timers.target

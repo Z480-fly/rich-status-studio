@@ -1,0 +1,61 @@
+name: Deploy worker
+
+# Deploys the native presence worker onto the Linux host that runs it.
+#
+# This job needs the self-hosted runner that worker/deploy/bootstrap.sh installs
+# when it is called with RUNNER_TOKEN (registration token from
+# Settings → Actions → Runners → New self-hosted runner). The runner only makes
+# outbound connections, so it works behind CGNAT and on IPv6-only hosts.
+#
+# If no runner is registered, the run simply stays queued; the pull-based
+# zora-worker-update.timer on the host performs the same deploy on every push.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild even when this commit is already installed
+        type: boolean
+        default: true
+
+concurrency:
+  group: zora-worker-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, zora-worker]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build, install and restart the worker
+        env:
+          # Optional: set these as repository secrets (Settings → Secrets and
+          # variables → Actions) to manage the host's /etc/zora-worker.env from
+          # GitHub instead of the server. Leave them unset to keep the existing
+          # file untouched. Values are never printed.
+          ZORA_API_BASE: ${{ secrets.ZORA_API_BASE }}
+          WORKER_SHARED_SECRET: ${{ secrets.WORKER_SHARED_SECRET }}
+        run: |
+          if [ "$(id -u)" != "0" ]; then
+            echo "::error::The runner must run as root (bootstrap installs it with 'svc.sh install root')."
+            exit 1
+          fi
+          bash worker/deploy/deploy.sh --no-sync --force
+
+      - name: Service status
+        if: always()
+        run: |
+          systemctl --no-pager -l status zora-presence-worker || true
+          echo "--- last 40 journal lines ---"
+          journalctl -u zora-presence-worker -n 40 --no-pager || true
