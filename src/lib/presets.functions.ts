@@ -20,12 +20,16 @@ async function discordUserId(accessToken: string): Promise<string> {
   return json.id;
 }
 
-function requireToken(input: unknown): { accessToken: string } {
+/**
+ * The access token is optional: inside an Activity the Embedded SDK supplies
+ * one, and in a browser tab the linked-account session cookie stands in for it
+ * (see `actingUserId`). Anything else is ignored rather than trusted.
+ */
+function accountInput(input: unknown): { accessToken?: string } {
   const data = input as { accessToken?: unknown };
-  if (!data || typeof data.accessToken !== "string" || !data.accessToken) {
-    throw new Error("Connect to Discord first.");
-  }
-  return { accessToken: data.accessToken };
+  const accessToken =
+    typeof data?.accessToken === "string" && data.accessToken ? data.accessToken : undefined;
+  return accessToken ? { accessToken } : {};
 }
 
 /**
@@ -73,9 +77,9 @@ function rowToPreset(row: any): SavedPreset {
 }
 
 export const listSavedPresets = createServerFn({ method: "POST" })
-  .validator(requireToken)
+  .validator(accountInput)
   .handler(async ({ data }) => {
-    const userId = await discordUserId(data.accessToken);
+    const userId = await actingUserId(data.accessToken);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: rows, error } = await supabaseAdmin
       .from("presets")
@@ -88,8 +92,15 @@ export const listSavedPresets = createServerFn({ method: "POST" })
 
 export const saveSavedPreset = createServerFn({ method: "POST" })
   .validator(
-    (input: { accessToken: string; id?: string; name: string; emoji?: string; accent?: string; draft: PresenceDraft }) => {
-      const { accessToken } = requireToken(input);
+    (input: {
+      accessToken?: string;
+      id?: string;
+      name: string;
+      emoji?: string;
+      accent?: string;
+      draft: PresenceDraft;
+    }) => {
+      const { accessToken } = accountInput(input);
       if (!input.name?.trim()) throw new Error("Give the preset a name.");
       if (!input.draft) throw new Error("Nothing to save.");
       return {
@@ -103,7 +114,7 @@ export const saveSavedPreset = createServerFn({ method: "POST" })
     },
   )
   .handler(async ({ data }) => {
-    const userId = await discordUserId(data.accessToken);
+    const userId = await actingUserId(data.accessToken);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const payload = {
       discord_user_id: userId,
@@ -136,13 +147,13 @@ export const saveSavedPreset = createServerFn({ method: "POST" })
   });
 
 export const deleteSavedPreset = createServerFn({ method: "POST" })
-  .validator((input: { accessToken: string; id: string }) => {
-    const { accessToken } = requireToken(input);
+  .validator((input: { accessToken?: string; id: string }) => {
+    const { accessToken } = accountInput(input);
     if (!input.id) throw new Error("Missing preset.");
     return { accessToken, id: input.id };
   })
   .handler(async ({ data }) => {
-    const userId = await discordUserId(data.accessToken);
+    const userId = await actingUserId(data.accessToken);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { error } = await supabaseAdmin
       .from("presets")
@@ -166,9 +177,7 @@ export const uploadPresenceImage = createServerFn({ method: "POST" })
     if (typeof input?.dataUrl !== "string" || !input.dataUrl.startsWith("data:image/")) {
       throw new Error("That wasn't a usable image.");
     }
-    const accessToken =
-      typeof input.accessToken === "string" && input.accessToken ? input.accessToken : undefined;
-    return { accessToken, dataUrl: input.dataUrl };
+    return { ...accountInput(input), dataUrl: input.dataUrl };
   })
   .handler(async ({ data }) => {
     const userId = await actingUserId(data.accessToken);
@@ -201,9 +210,7 @@ export const uploadPresenceImage = createServerFn({ method: "POST" })
  */
 export const resolveExternalAssets = createServerFn({ method: "POST" })
   .validator((input: { accessToken?: string; urls: string[] }) => {
-    const urls = (input.urls ?? []).filter(
-      (u) => typeof u === "string" && /^https?:\/\//i.test(u),
-    );
+    const urls = (input.urls ?? []).filter((u) => typeof u === "string" && /^https?:\/\//i.test(u));
     return { urls: urls.slice(0, 4) };
   })
   .handler(async ({ data }) => ({

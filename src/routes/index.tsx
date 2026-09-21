@@ -4,7 +4,8 @@ import {
   ACTIVITY_TYPES,
   PRESETS,
   buildActivityPayload,
-  emptyDraft,
+  normalizeHex,
+  swatchPath,
   type PresenceDraft,
   type TimestampMode,
 } from "@/lib/presence";
@@ -60,6 +61,9 @@ export const Route = createFileRoute("/")({
 
 type Status = { kind: "idle" | "busy" | "ok" | "error"; message: string };
 
+/** Quick-pick colours for the status accent. */
+const COLOUR_SWATCHES = ["#4ade80", "#22d3ee", "#a78bfa", "#fbbf24", "#fb7185", "#f472b6"];
+
 /** Surfaces the real Discord error text, even when the SDK throws non-Error values. */
 function describeError(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -114,6 +118,10 @@ function PresenceStudio() {
   // Server presence (drive the Linux worker): link status + worker heartbeat.
   const [sp, setSp] = useState<ServerPresenceStatus | null>(null);
   const [spBusy, setSpBusy] = useState(false);
+
+  // The account is reachable from either surface: the Activity SDK, or the
+  // linked-account session this browser holds.
+  const canUseAccount = connected || !!sp?.linked;
 
   const refreshServerPresence = useCallback(async () => {
     try {
@@ -196,25 +204,46 @@ function PresenceStudio() {
     };
   }, [connected]);
 
-  // Load saved presets once connected
+  // Load saved presets once the account is reachable, via the Activity SDK or
+  // the browser session cookie.
   useEffect(() => {
-    if (!connected) return;
+    if (!canUseAccount) return;
     const token = getAccessToken();
-    if (!token) return;
 
     setSavedLoading(true);
-    listSavedPresets({ data: { accessToken: token } })
+    listSavedPresets({ data: token ? { accessToken: token } : {} })
       .then((res) => setSavedPresets(res.presets ?? []))
       .catch(() => {
         /* non-fatal – user can still use built-in presets */
       })
       .finally(() => setSavedLoading(false));
-  }, [connected]);
+  }, [canUseAccount]);
 
   const activePreset = useMemo(
     () => PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]!,
     [presetId],
   );
+
+  // A hex colour typed by the user overrides the preset's own accent.
+  const draftColor = normalizeHex(draft.color);
+  const accent = draftColor ?? activePreset.accent;
+
+  // When a status is live the preview timer counts from the instant Discord was
+  // given, so it reads the same as the profile instead of restarting.
+  const activityStart = useMemo(() => {
+    const start = (sp?.activity as { timestamps?: { start?: unknown } } | null)?.timestamps?.start;
+    return typeof start === "number" ? start : null;
+  }, [sp]);
+
+  const workerLive = sp?.desiredState === "running" && sp.workerState === "running";
+  const pill =
+    connectionState === "reconnecting"
+      ? { tone: "warn" as const, label: "Reconnecting..." }
+      : live
+        ? { tone: "on" as const, label: "Live on your profile" }
+        : workerLive
+          ? { tone: "on" as const, label: "Live on your profile (worker)" }
+          : { tone: "off" as const, label: "Not active" };
 
   const set = <K extends keyof PresenceDraft>(key: K, value: PresenceDraft[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
@@ -226,7 +255,7 @@ function PresenceStudio() {
     if (!preset) return;
     setPresetId(id);
     setEditingId(null);
-    setDraft(id === "custom" ? { ...emptyDraft, timestampMode: "none" } : { ...preset.draft });
+    setDraft({ ...preset.draft });
     setLive(false);
   };
 
@@ -281,21 +310,21 @@ function PresenceStudio() {
   };
 
   const handleSavePreset = async () => {
-    const token = getAccessToken();
-    if (!token) {
-      setStatus({ kind: "error", message: "Connect to Discord first." });
+    if (!canUseAccount) {
+      setStatus({ kind: "error", message: "Link your Discord account first." });
       return;
     }
+    const token = getAccessToken();
     const name = saveName.trim() || "My preset";
     setStatus({ kind: "busy", message: editingId ? "Updating preset…" : "Saving preset…" });
     try {
       const { preset } = await saveSavedPreset({
         data: {
-          accessToken: token,
+          ...(token ? { accessToken: token } : {}),
           ...(editingId ? { id: editingId } : {}),
           name,
           emoji: "✨",
-          accent: "oklch(0.8 0.13 180)",
+          accent: draftColor ?? "oklch(0.8 0.13 180)",
           draft,
         },
       });
@@ -316,12 +345,11 @@ function PresenceStudio() {
 
   const handleDuplicatePreset = async (preset: SavedPreset) => {
     const token = getAccessToken();
-    if (!token) return;
     setStatus({ kind: "busy", message: "Duplicating…" });
     try {
       const { preset: copy } = await saveSavedPreset({
         data: {
-          accessToken: token,
+          ...(token ? { accessToken: token } : {}),
           name: `${preset.name} (copy)`,
           emoji: preset.emoji,
           accent: preset.accent,
@@ -340,10 +368,9 @@ function PresenceStudio() {
 
   const handleDeletePreset = async (id: string) => {
     const token = getAccessToken();
-    if (!token) return;
     setStatus({ kind: "busy", message: "Deleting…" });
     try {
-      await deleteSavedPreset({ data: { accessToken: token, id } });
+      await deleteSavedPreset({ data: { ...(token ? { accessToken: token } : {}), id } });
       setSavedPresets((prev) => prev.filter((p) => p.id !== id));
       if (editingId === id) {
         setEditingId(null);
@@ -455,36 +482,34 @@ function PresenceStudio() {
           <div className="flex items-center gap-3">
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                connectionState === "reconnecting"
+                pill.tone === "warn"
                   ? "border-amber-500/50 bg-amber-500/10 text-amber-600"
-                  : live
+                  : pill.tone === "on"
                     ? "border-primary/50 bg-primary/10 text-primary"
                     : "border-border bg-secondary text-muted-foreground"
               }`}
             >
               <span
                 className={`size-2 rounded-full ${
-                  connectionState === "reconnecting"
+                  pill.tone === "warn"
                     ? "animate-pulse bg-amber-500"
-                    : live
+                    : pill.tone === "on"
                       ? "animate-pulse bg-primary"
                       : "bg-muted-foreground"
                 }`}
               />
-              {connectionState === "reconnecting"
-                ? "Reconnecting…"
-                : live
-                  ? "Live on your profile"
-                  : "Not active"}
+              {pill.label}
             </span>
           </div>
         </header>
 
         {!inDiscord && (
           <div className="mt-6 rounded-2xl border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
-            You're viewing this in a normal browser tab, so nothing can reach your profile here.
-            Everything below works as a designer — launch it as an Activity inside a Discord voice
-            channel to actually go live.
+            <span className="font-medium text-foreground">This is the browser view.</span> Link your
+            Discord account once below, then use{" "}
+            <span className="font-medium text-foreground">Go live with this draft</span> — the
+            worker keeps the status on your profile after you close everything. Running it as an
+            Activity inside a voice channel is a separate, shorter-lived option.
           </div>
         )}
 
@@ -624,7 +649,8 @@ function PresenceStudio() {
                 <button
                   key={preset.id}
                   onClick={() => choosePreset(preset.id)}
-                  className={`group flex items-center gap-2 rounded-xl border px-3 py-3 text-left transition-all ${
+                  style={{ borderLeftColor: preset.accent }}
+                  className={`group flex items-center gap-2 rounded-xl border border-l-4 px-3 py-3 text-left transition-all ${
                     selected
                       ? "border-primary bg-primary/10 shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)]"
                       : "border-border bg-card/70 hover:border-primary/50 hover:bg-card"
@@ -649,9 +675,9 @@ function PresenceStudio() {
             )}
           </div>
 
-          {!connected ? (
+          {!canUseAccount ? (
             <p className="mt-3 text-sm text-muted-foreground">
-              Connect to Discord to save and load your personal presets.
+              Link your Discord account above to save and load your personal presets.
             </p>
           ) : savedLoading ? (
             <p className="mt-3 text-sm text-muted-foreground">Loading your presets…</p>
@@ -766,6 +792,39 @@ function PresenceStudio() {
                 max={128}
               />
 
+              <div>
+                <Label>Status colour</Label>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <input
+                    value={draft.color ?? ""}
+                    onChange={(e) => set("color", e.target.value)}
+                    placeholder="#4ade80"
+                    maxLength={7}
+                    className="field w-32 focus:field-focus"
+                  />
+                  <span
+                    aria-hidden
+                    className="size-9 shrink-0 rounded-lg border border-border"
+                    style={{ backgroundColor: draftColor ?? "transparent" }}
+                  />
+                  {COLOUR_SWATCHES.map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      title={hex}
+                      onClick={() => set("color", hex)}
+                      className="size-7 rounded-md border border-border transition-transform hover:scale-110"
+                      style={{ backgroundColor: hex }}
+                    />
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {draft.color && !draftColor
+                    ? "Use a hex code like #4ade80."
+                    : "Discord has no colour setting for presence, so the colour tints the studio and, when you leave the photos empty, becomes the artwork on your profile."}
+                </p>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <ImagePicker
                   label="Large image"
@@ -855,12 +914,21 @@ function PresenceStudio() {
           <section className="space-y-5">
             <div className="panel p-5 sm:p-6">
               <h2 className="text-lg font-semibold">Live preview</h2>
-              <PresenceCard draft={draft} accent={activePreset.accent} />
+              <PresenceCard draft={draft} accent={accent} liveStart={activityStart} />
             </div>
 
             <div className="panel p-5 sm:p-6">
               <div className="flex flex-col gap-3">
-                {!connected ? (
+                {!inDiscord ? (
+                  <div className="rounded-xl border border-border bg-background/60 p-3">
+                    <p className="text-sm font-medium">Inside Discord only</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      These buttons push the status through the Activity itself, so they only work
+                      while the page runs inside a voice channel. For a status that outlives you
+                      closing everything, use Server presence above.
+                    </p>
+                  </div>
+                ) : !connected ? (
                   <button
                     onClick={handleConnect}
                     disabled={status.kind === "busy"}
@@ -903,16 +971,26 @@ function PresenceStudio() {
               <h3 className="text-sm font-semibold text-foreground">What Discord allows</h3>
               <ul className="mt-3 space-y-2">
                 <li>
-                  <strong className="text-foreground">The bold title line is fixed.</strong> Discord
-                  always shows this app's own name there, so the preset name lives in Details
-                  instead.
+                  <strong className="text-foreground">The header has two parts.</strong> The verb —
+                  Listening to, Playing, Watching — comes from Activity type above. The name shown
+                  beside it is your Discord application's name: rename it in the{" "}
+                  <a
+                    className="underline hover:text-foreground"
+                    href="https://discord.com/developers/applications"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Developer Portal
+                  </a>
+                  , because Discord exposes no API for it.
                 </li>
                 <li>
                   <strong className="text-foreground">Buttons aren't available</strong> to Discord
                   Activities — only to desktop apps.
                 </li>
                 <li>
-                  Your status lasts while the Activity is open, and disappears when you leave.
+                  With <strong className="text-foreground">Server presence</strong> the status
+                  outlives the Activity: the worker keeps it up until you press Stop.
                 </li>
               </ul>
             </div>
@@ -961,13 +1039,46 @@ function Field({
   );
 }
 
-function PresenceCard({ draft, accent }: { draft: PresenceDraft; accent: string }) {
+/** mm:ss, or h:mm:ss past an hour — the shape Discord renders a timer in. */
+function formatClock(totalSeconds: number): string {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return hours > 0
+    ? `${hours}:${pad(minutes)}:${pad(seconds % 60)}`
+    : `${minutes}:${pad(seconds % 60)}`;
+}
+
+function PresenceCard({
+  draft,
+  accent,
+  liveStart,
+}: {
+  draft: PresenceDraft;
+  accent: string;
+  liveStart: number | null;
+}) {
   const verb = ACTIVITY_TYPES.find((t) => t.value === draft.type)?.verb ?? "Playing";
+  const color = normalizeHex(draft.color);
+  // Whatever Discord will actually fetch: your photo, else the colour swatch.
+  // Fetched from this same origin so the preview renders before it is published.
+  const artwork = draft.largeImage.trim() || (color ? swatchPath(color) : "");
+  const ticking = draft.timestampMode !== "none";
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!ticking) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [ticking]);
+
+  const elapsed = liveStart ? (now - liveStart) / 1000 : 0;
   const timer =
     draft.timestampMode === "elapsed"
-      ? "00:00 elapsed"
+      ? `${formatClock(elapsed)} elapsed`
       : draft.timestampMode === "remaining"
-        ? `${draft.durationMinutes}:00 left`
+        ? `${formatClock(draft.durationMinutes * 60)} left`
         : null;
   const party =
     draft.partyMax > 0 && draft.partyCurrent > 0
@@ -985,9 +1096,9 @@ function PresenceCard({ draft, accent }: { draft: PresenceDraft; accent: string 
             className="flex size-16 items-center justify-center overflow-hidden rounded-xl border border-border text-2xl"
             style={{ backgroundColor: `color-mix(in oklch, ${accent} 22%, transparent)` }}
           >
-            {draft.largeImage ? (
+            {artwork ? (
               <img
-                src={draft.largeImage}
+                src={artwork}
                 alt=""
                 className="size-full object-cover"
                 onError={(e) => {
@@ -1019,7 +1130,12 @@ function PresenceCard({ draft, accent }: { draft: PresenceDraft; accent: string 
               <span className="italic opacity-60">State line</span>
             )}
           </p>
-          {timer && <p className="text-xs text-muted-foreground/80">{timer}</p>}
+          {timer && (
+            <p className="text-xs text-muted-foreground/80">
+              {timer}
+              {draft.timestampMode === "elapsed" && !liveStart ? " · starts when you go live" : ""}
+            </p>
+          )}
         </div>
       </div>
     </div>
