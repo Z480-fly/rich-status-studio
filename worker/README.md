@@ -64,22 +64,45 @@ Copy `.env.example` to `.env`:
 
 ## Build (native worker)
 
-1. Download the **Discord Social SDK** for Linux from the Discord Developer
-   Portal (Applications → your app → Social SDK → Downloads). Accept the terms.
-2. Unzip it to `worker/third_party/discord_social_sdk/` so you have
-   `include/cdiscord.h`, `include/discordpp.h`, `lib/release/libdiscord_partner_sdk.so`.
-3. Install build deps: `sudo apt install build-essential cmake libcurl4-openssl-dev`
+1. Download the **Discord Social SDK for Linux** from the Discord Developer
+   Portal for the application that owns the OAuth client (Applications → your
+   app → Social SDK → Downloads). Accept Discord's SDK terms. The repository
+   does not pin a public version because Discord distributes the SDK through the
+   authenticated Developer Portal.
+2. Extract it to `worker/third_party/discord_social_sdk/` (or pass
+   `-DDISCORD_SDK_ROOT=/absolute/path/to/the/extracted/sdk`) and verify that the
+   tree contains both `include/discordpp.h` and
+   `lib/release/libdiscord_partner_sdk.so` (a `lib/` fallback is also accepted).
+   Do not commit this directory or its binaries.
+3. Install build deps: `sudo apt install build-essential cmake libcurl4-openssl-dev libasound2-dev`.
+   On headless Linux, also install the runtime libraries required by the SDK
+   archive (commonly PulseAudio and X11 libraries); verify with `ldd
+   lib/release/libdiscord_partner_sdk.so`.
 4. ```bash
    cd worker && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
    ```
+   CMake enables native mode only when both the header and shared library are
+   present; a partial SDK installation fails configuration instead of silently
+   producing a misleading build.
 5. Run: `./build/zora-presence-worker` (reads `.env` from the working directory)
 
-Without the SDK in `third_party/`, CMake still builds a **dry-run** binary: the
-same poll/reconcile/heartbeat loop, logging the presence updates it would push
-instead of calling Discord. All SDK-specific calls live in the adapter block in
-`worker/src/main.cpp` — after unzipping your SDK, re-check the `TODO(verify)`
-markers there against your version's `discordpp.h` (the SDK cannot be compiled
-or verified from this repository, since the download is gated).
+### SDK API verification status
+
+The supplied SDK archive is **Discord Social SDK 1.10.19337**. The native
+adapter is compiled against its `discordpp.h` and uses the documented C++ API:
+`Client::UpdateToken` with `AuthorizationTokenType::Bearer`, `Client::Connect`,
+`Activity` setters, `Client::UpdateRichPresence`, and
+`Client::ClearRichPresence`. The generated header requires
+`DISCORDPP_IMPLEMENTATION` in one translation unit; `worker/src/main.cpp`
+defines it for this executable. The worker also calls `discordpp::RunCallbacks()`
+while waiting for asynchronous operations and during its main loop.
+
+The native build has been verified locally against the supplied header and
+`libdiscord_partner_sdk.so`. A live Discord account, a configured application
+with the required `openid` and `sdk.social_layer_presence` scopes, and a Linux
+host with the SDK runtime dependencies are still required to verify a real
+profile update. The no-SDK dry-run and Node contract harness remain available
+for CI and control-plane testing.
 
 ### Run as a service
 
