@@ -7,6 +7,8 @@
  *   - `buttons` : not supported by the Embedded App SDK (native apps only).
  */
 
+import { PUBLIC_SITE_ORIGIN } from "./site";
+
 export type ActivityTypeValue = 0 | 2 | 3 | 5;
 
 export const ACTIVITY_TYPES: { value: ActivityTypeValue; label: string; verb: string }[] = [
@@ -22,6 +24,8 @@ export interface PresenceDraft {
   type: ActivityTypeValue;
   details: string;
   state: string;
+  /** Hex colour (#rrggbb) for the studio accent and the generated status artwork. */
+  color: string;
   largeImage: string;
   largeText: string;
   smallImage: string;
@@ -44,6 +48,7 @@ const base: PresenceDraft = {
   type: 0,
   details: "",
   state: "",
+  color: "",
   largeImage: "",
   largeText: "",
   smallImage: "",
@@ -107,7 +112,6 @@ export const PRESETS: Preset[] = [
     type: 3,
     details: "🍿 Watching a movie",
     state: "No spoilers please",
-    timestampMode: "remaining",
     durationMinutes: 115,
   }),
   make("listening", "Listening", "🎧", "oklch(0.76 0.13 250)", {
@@ -119,17 +123,46 @@ export const PRESETS: Preset[] = [
     type: 0,
     details: "🛋️ Chilling",
     state: "Away from keyboard",
-    timestampMode: "none",
   }),
   make("custom", "Custom", "✨", "oklch(0.8 0.13 180)", {
     type: 0,
     details: "",
     state: "",
-    timestampMode: "none",
   }),
 ];
 
 export const emptyDraft = base;
+
+/** Studio accent used when the draft carries no colour of its own. */
+export const DEFAULT_ACCENT = "oklch(0.8 0.13 180)";
+
+/**
+ * Accepts "4ade80", "#4ADE80" or "#4ad" and returns "#4ade80"; null when the
+ * input is not a usable hex colour. Also tolerates a missing value so drafts
+ * saved before the colour field existed keep working.
+ */
+export function normalizeHex(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value.trim());
+  if (!match) return null;
+  const digits = match[1]!.toLowerCase();
+  return `#${digits.length === 3 ? digits.replace(/./g, (c) => c + c) : digits}`;
+}
+
+/**
+ * Public URL of the generated colour swatch.
+ *
+ * Discord's presence payload has no colour field, so a chosen colour is
+ * published as the status artwork instead — an image Discord can fetch, which
+ * is what makes the colour visible on the profile.
+ */
+export function swatchPath(hex: string): string {
+  return `/api/public/presence-swatch/${hex.slice(1)}.png`;
+}
+
+export function swatchUrl(hex: string): string {
+  return `${PUBLIC_SITE_ORIGIN}${swatchPath(hex)}`;
+}
 
 /** Builds the exact payload sent to Discord's setActivity command. */
 export function buildActivityPayload(draft: PresenceDraft) {
@@ -139,7 +172,10 @@ export function buildActivityPayload(draft: PresenceDraft) {
   if (draft.state.trim()) activity["state"] = draft.state.trim();
 
   const assets: Record<string, string> = {};
-  if (draft.largeImage.trim()) assets["large_image"] = draft.largeImage.trim();
+  // A picked photo wins; otherwise a chosen colour becomes the artwork.
+  const color = normalizeHex(draft.color);
+  const largeImage = draft.largeImage.trim() || (color ? swatchUrl(color) : "");
+  if (largeImage) assets["large_image"] = largeImage;
   if (draft.largeText.trim()) assets["large_text"] = draft.largeText.trim();
   if (draft.smallImage.trim()) assets["small_image"] = draft.smallImage.trim();
   if (draft.smallText.trim()) assets["small_text"] = draft.smallText.trim();

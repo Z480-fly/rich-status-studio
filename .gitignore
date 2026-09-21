@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 
+# TypeScript incremental build state
+*.tsbuildinfo
+
 # Proprietary Discord Social SDK and native worker build output
 worker/third_party/
 worker/build/

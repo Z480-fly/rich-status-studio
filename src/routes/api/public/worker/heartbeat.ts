@@ -4,8 +4,11 @@ import { z } from "zod";
 const Body = z.object({
   discord_user_id: z.string().min(1).max(64),
   state: z.enum(["idle", "connecting", "running", "cleared", "error"]),
-  message: z.string().max(500).optional(),
-  revision: z.number().int().nonnegative().optional(),
+  // nullish, not optional: the worker reports "message": null when there is
+  // nothing to say, and `.optional()` rejects an explicit null — which turned
+  // every heartbeat into a 400 and left the panel showing "No worker activity".
+  message: z.string().max(500).nullish(),
+  revision: z.number().int().nonnegative().nullish(),
 });
 
 /** The Linux worker reports here so the phone can see whether presence is live. */

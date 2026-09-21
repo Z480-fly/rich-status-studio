@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicDiscordCallbackRouteImport } from './routes/api/public/discord/callback'
 import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
+import { Route as ApiPublicPresenceSwatchColorRouteImport } from './routes/api/public/presence-swatch.$color'
 import { Route as ApiPublicWorkerHeartbeatRouteImport } from './routes/api/public/worker/heartbeat'
 import { Route as ApiPublicWorkerPollRouteImport } from './routes/api/public/worker/poll'
 
@@ -32,6 +33,12 @@ const ApiPublicPresenceImageNameRoute =
     path: '/api/public/presence-image/$name',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicPresenceSwatchColorRoute =
+  ApiPublicPresenceSwatchColorRouteImport.update({
+    id: '/api/public/presence-swatch/$color',
+    path: '/api/public/presence-swatch/$color',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicWorkerHeartbeatRoute =
   ApiPublicWorkerHeartbeatRouteImport.update({
     id: '/api/public/worker/heartbeat',
@@ -48,6 +55,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
   '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
   '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
@@ -55,6 +63,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
   '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
   '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
@@ -63,6 +72,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
+  '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
   '/api/public/worker/heartbeat': typeof ApiPublicWorkerHeartbeatRoute
   '/api/public/worker/poll': typeof ApiPublicWorkerPollRoute
 }
@@ -72,6 +82,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
+    | '/api/public/presence-swatch/$color'
     | '/api/public/worker/heartbeat'
     | '/api/public/worker/poll'
   fileRoutesByTo: FileRoutesByTo
@@ -79,6 +90,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
+    | '/api/public/presence-swatch/$color'
     | '/api/public/worker/heartbeat'
     | '/api/public/worker/poll'
   id:
@@ -86,6 +98,7 @@ export interface FileRouteTypes {
     | '/'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
+    | '/api/public/presence-swatch/$color'
     | '/api/public/worker/heartbeat'
     | '/api/public/worker/poll'
   fileRoutesById: FileRoutesById
@@ -94,6 +107,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   ApiPublicDiscordCallbackRoute: typeof ApiPublicDiscordCallbackRoute
   ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
+  ApiPublicPresenceSwatchColorRoute: typeof ApiPublicPresenceSwatchColorRoute
   ApiPublicWorkerHeartbeatRoute: typeof ApiPublicWorkerHeartbeatRoute
   ApiPublicWorkerPollRoute: typeof ApiPublicWorkerPollRoute
 }
@@ -121,6 +135,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicPresenceImageNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/presence-swatch/$color': {
+      id: '/api/public/presence-swatch/$color'
+      path: '/api/public/presence-swatch/$color'
+      fullPath: '/api/public/presence-swatch/$color'
+      preLoaderRoute: typeof ApiPublicPresenceSwatchColorRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/worker/heartbeat': {
       id: '/api/public/worker/heartbeat'
       path: '/api/public/worker/heartbeat'
@@ -142,6 +163,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   ApiPublicDiscordCallbackRoute: ApiPublicDiscordCallbackRoute,
   ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,
+  ApiPublicPresenceSwatchColorRoute: ApiPublicPresenceSwatchColorRoute,
   ApiPublicWorkerHeartbeatRoute: ApiPublicWorkerHeartbeatRoute,
   ApiPublicWorkerPollRoute: ApiPublicWorkerPollRoute,
 }
