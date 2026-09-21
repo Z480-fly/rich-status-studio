@@ -5,6 +5,8 @@ import {
   PRESETS,
   buildActivityPayload,
   normalizeHex,
+  studioBackgroundStyle,
+  studioGlowStyle,
   swatchPath,
   type PresenceDraft,
   type TimestampMode,
@@ -224,7 +226,9 @@ function PresenceStudio() {
     [presetId],
   );
 
-  // A hex colour typed by the user overrides the preset's own accent.
+  // A hex colour typed by the user overrides the preset's own accent, tints
+  // the whole dashboard background, and becomes the profile artwork when no
+  // photo is chosen.
   const draftColor = normalizeHex(draft.color);
   const accent = draftColor ?? activePreset.accent;
 
@@ -466,8 +470,16 @@ function PresenceStudio() {
   };
 
   return (
-    <main className="min-h-screen px-4 py-8 sm:px-8 lg:px-12">
-      <div className="mx-auto max-w-6xl">
+    <main
+      className="min-h-screen px-4 py-8 transition-[background-color] duration-500 sm:px-8 lg:px-12"
+      style={studioBackgroundStyle(draft.color)}
+    >
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-x-0 top-0 h-64 transition-opacity duration-500"
+        style={studioGlowStyle(draft.color) ?? { opacity: 0 }}
+      />
+      <div className="relative mx-auto max-w-6xl">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
