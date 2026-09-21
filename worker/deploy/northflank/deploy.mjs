@@ -24,7 +24,9 @@
  *   DISCORD_APP_ID           optional, informational for the worker
  */
 
-const API = 'https://api.northflank.com/v1';
+// Bare origin. Every path passed to nf() carries the /v1 prefix, exactly as the
+// OpenAPI spec writes it (see SPEC_PATHS), so the two can never drift apart.
+const API = 'https://api.northflank.com';
 
 // ---------------------------------------------------------------------------
 // Flags / environment
@@ -47,6 +49,7 @@ const opts = {
   service: flag('service', 'zora-presence-worker'),
   repo: flag('repo', 'https://github.com/Z480-fly/rich-status-studio'),
   branch: flag('branch', 'main'),
+  sha: flag('sha'),
   region: flag('region', 'europe-west'),
   apiBase: flag('api-base') ?? process.env.ZORA_API_BASE,
   sdkUrl: flag('sdk-url') ?? process.env.DISCORD_SOCIAL_SDK_URL,
@@ -95,6 +98,9 @@ function requireToken() {
 const hasToken = () => Boolean(process.env.NORTHFLANK_API_TOKEN);
 
 async function nf(method, path, body) {
+  // Guard the invariant: a path missing the /v1 prefix would silently hit
+  // /v1/plans-style routes that do not exist instead of failing loudly here.
+  if (!path.startsWith('/v1/')) fail(`internal: API path "${path}" must start with /v1/`);
   const res = await fetch(`${API}${path}`, {
     method,
     headers: {
@@ -111,7 +117,17 @@ async function nf(method, path, body) {
     /* non-JSON error page */
   }
   if (!res.ok) {
-    const detail = json?.error?.message || json?.message || text.slice(0, 400);
+    // Northflank reports payload problems as a generic "see details" message, so
+    // include the details (and the raw body as a last resort) or a 400 is opaque.
+    const message = json?.error?.message || json?.message;
+    const details = json?.error?.details ?? json?.details ?? json?.errors;
+    const detail = [
+      message,
+      details === undefined ? undefined : JSON.stringify(details),
+      message ? undefined : text.slice(0, 600),
+    ]
+      .filter(Boolean)
+      .join(' | ');
     const err = new Error(`${method} ${path} -> ${res.status} ${detail}`);
     err.status = res.status;
     throw err;
@@ -252,7 +268,7 @@ const SPEC_PATHS = {
 };
 
 async function loadSpec() {
-  const res = await fetch(`${API}/swagger-json`);
+  const res = await fetch(`${API}/v1/swagger-json`);
   if (!res.ok) fail(`could not load the Northflank OpenAPI spec (${res.status})`);
   return res.json();
 }
@@ -357,6 +373,10 @@ async function dryRun() {
     problems.push('the build trigger does not accept a branch parameter for combined services');
   }
 
+  if (!(await checkBranchDockerfile())) {
+    problems.push(`branch "${opts.branch}" has no worker/Dockerfile`);
+  }
+
   step('Plans this deployment would use');
   log(`  deployment plan: ${plans.deploymentPlan}`);
   log(`  build plan:      ${plans.buildPlan}`);
@@ -389,7 +409,7 @@ async function resolvePlans() {
   // Without a token (dry-run) keep the documented defaults; with one, ask the
   // account which plans actually exist so the smallest valid ones are used.
   if (!hasToken()) return { ...fallback, ...planOverrides() };
-  const data = await nf('GET', '/plans');
+  const data = await nf('GET', '/v1/plans');
   const plans = firstArray(data?.data?.plans, data?.plans);
   if (!plans.length) return { ...fallback, ...planOverrides() };
   const out = { ...fallback, ...planOverrides() };
@@ -399,12 +419,11 @@ async function resolvePlans() {
     const picked = cheapest(viable.length ? viable : plans);
     if (picked?.id) out.deploymentPlan = picked.id;
   }
-  if (!opts.buildPlan) {
-    // Northflank requires build plans with at least 4 vCPUs.
-    const big = plans.filter((p) => (p.cpuResource ?? 0) >= 4);
-    const picked = cheapest(big.length ? big : plans);
-    if (picked?.id) out.buildPlan = picked.id;
-  }
+  // Do NOT auto-pick the build plan from /v1/plans: that endpoint returns
+  // generic compute plans whose ids (e.g. nf-compute-400) are rejected for
+  // builds with "404 Build plan not found". Build plans use the -<ramGB> suffix
+  // form, and nf-compute-400-16 is the documented default (>=4 vCPU required).
+  // --build-plan overrides this.
   return out;
 }
 
@@ -412,7 +431,12 @@ async function resolvePlans() {
 // Provisioning
 // ---------------------------------------------------------------------------
 
-async function ensureProject() {
+/**
+ * Resolves the project id. `create: false` keeps the read-only commands
+ * (status, logs) genuinely read-only — they must never provision a project
+ * just because someone asked to look at one.
+ */
+async function ensureProject({ create = true } = {}) {
   step(`Ensuring project "${opts.project}"`);
   const list = await nf('GET', '/v1/projects');
   const projects = firstArray(list?.data?.projects, list?.data);
@@ -422,9 +446,17 @@ async function ensureProject() {
     log(`  ok  project exists: ${id}`);
     return id;
   }
+  if (!create) {
+    fail(
+      `project "${opts.project}" does not exist yet. This command only reads; run \`up\`\n` +
+        '       to create the project and service (it creates billable resources).',
+    );
+  }
   const created = await nf('POST', '/v1/projects', {
     name: opts.project,
-    description: 'Zora — Discord Rich Presence controller',
+    // The API validates this against an ASCII-only pattern; an em dash here is
+    // rejected with an opaque 400 payload-validation error.
+    description: 'Zora - Discord Rich Presence controller',
     color: '#3b82f6',
     region: opts.region,
   });
@@ -471,11 +503,50 @@ async function ensureService(projectId) {
   return service.id;
 }
 
+/**
+ * Combined services reject branch-only builds with
+ * "400 Combined services can only build from a commit sha", so resolve the
+ * branch head through the public GitHub API (or accept --sha).
+ */
+async function resolveBuildSha() {
+  if (opts.sha) {
+    log(`  ok  using supplied sha ${String(opts.sha).slice(0, 12)}`);
+    return opts.sha;
+  }
+  const slug = opts.repo.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
+  try {
+    const res = await fetch(`https://api.github.com/repos/${slug}/commits/${opts.branch}`, {
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'zora-presence-worker-deploy',
+      },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json?.sha) {
+        log(`  ok  resolved ${opts.branch} -> ${json.sha.slice(0, 12)}`);
+        return json.sha;
+      }
+    } else {
+      log(`  --  GitHub lookup failed (HTTP ${res.status})`);
+    }
+  } catch (e) {
+    log(`  --  GitHub lookup failed (${e.message})`);
+  }
+  return undefined;
+}
+
 async function startBuild(projectId, serviceId) {
   step(`Starting a build of ${opts.branch}`);
-  const res = await nf('POST', `/v1/projects/${projectId}/services/${serviceId}/build`, {
-    branch: opts.branch,
-  });
+  const sha = await resolveBuildSha();
+  if (!sha) {
+    fail(
+      'combined services can only build from a commit sha and it could not be resolved.\n' +
+        '       Pass --sha <full commit sha> for the branch being built.',
+    );
+  }
+  // Send only the sha: the branch form is rejected for combined services.
+  const res = await nf('POST', `/v1/projects/${projectId}/services/${serviceId}/build`, { sha });
   const buildId = res?.data?.id;
   log(`  ok  build ${buildId ?? '(no id returned)'} queued`);
   return buildId;
@@ -604,8 +675,44 @@ async function checkApi() {
 // Commands
 // ---------------------------------------------------------------------------
 
+/**
+ * Northflank builds whatever branch the service points at. If the Dockerfile is
+ * not there, the build fails *after* the project and service already exist,
+ * wasting build minutes and leaving a half-configured service behind. Check the
+ * public raw URL first so a missing Dockerfile costs nothing.
+ */
+async function checkBranchDockerfile() {
+  step(`Checking branch "${opts.branch}" for the worker Dockerfile`);
+  const slug = opts.repo.replace(/^https?:\/\/github\.com\//i, '').replace(/\.git$/i, '');
+  const url = `https://raw.githubusercontent.com/${slug}/${opts.branch}/worker/Dockerfile`;
+  let res;
+  try {
+    res = await fetch(url, { method: 'HEAD' });
+  } catch (e) {
+    log(`  --  check skipped (${e.message})`);
+    return true;
+  }
+  if (res.ok) {
+    log('  ok  worker/Dockerfile is present on that branch');
+    return true;
+  }
+  log(`  FAIL worker/Dockerfile not found on "${opts.branch}" (HTTP ${res.status})`);
+  log('       Northflank builds this branch, so its build would stop at "Dockerfile not found".');
+  log('       Merge the deploy commit into that branch, or pass --branch <branch that has it>.');
+  log('       (A 404 here can also mean the repository is not publicly readable.)');
+  return false;
+}
+
 async function up() {
   requireToken();
+  if (!(await checkBranchDockerfile())) {
+    step('Result');
+    console.error(
+      '  Refusing to proceed: the branch Northflank would build has no Dockerfile,\n' +
+        '  so no project or service was created.',
+    );
+    process.exit(1);
+  }
   const projectId = await ensureProject();
   const serviceId = await ensureService(projectId);
   const buildId = await startBuild(projectId, serviceId);
@@ -635,7 +742,7 @@ async function up() {
 
 async function status() {
   requireToken();
-  const projectId = await ensureProject();
+  const projectId = await ensureProject({ create: false });
   const service = await findService(projectId);
   if (!service) fail(`service "${opts.service}" does not exist in project ${projectId}`);
   step(`Service ${service.id}`);
@@ -659,11 +766,17 @@ async function status() {
 
 async function logs() {
   requireToken();
-  const projectId = await ensureProject();
+  const projectId = await ensureProject({ create: false });
   const service = await findService(projectId);
   if (!service) fail(`service "${opts.service}" does not exist in project ${projectId}`);
   step('Runtime logs');
-  for (const line of await runtimeLogs(projectId, service.id)) log(`  ${line}`);
+  // While the first build is still running there is no deployment yet, and the
+  // logs endpoint 404s. That must not hide the build logs below.
+  try {
+    for (const line of await runtimeLogs(projectId, service.id)) log(`  ${line}`);
+  } catch (e) {
+    log(`  (no runtime logs yet: ${e.message})`);
+  }
   step('Build logs');
   for (const line of (await buildLogs(projectId, service.id)).slice(-opts.limit)) log(`  ${line}`);
 }
@@ -699,6 +812,7 @@ Flags
   --service <name>         service name (default: zora-presence-worker)
   --repo <url>             git repository (default: Z480-fly/rich-status-studio)
   --branch <name>          branch to build (default: main)
+  --sha <commit>           commit to build (combined services require a sha; auto-resolved if omitted)
   --region <id>            region for a newly created project (default: europe-west)
   --deployment-plan <id>   override the auto-selected deployment plan
   --build-plan <id>        override the auto-selected build plan
