@@ -75,9 +75,14 @@ Copy `.env.example` to `.env`:
    `lib/release/libdiscord_partner_sdk.so` (a `lib/` fallback is also accepted).
    Do not commit this directory or its binaries.
 3. Install build deps: `sudo apt install build-essential cmake libcurl4-openssl-dev libasound2-dev`.
-   On headless Linux, also install the runtime libraries required by the SDK
-   archive (commonly PulseAudio and X11 libraries); verify with `ldd
-   lib/release/libdiscord_partner_sdk.so`.
+   The SDK's Linux shared library also declares these runtime dependencies:
+   `libpulse.so.0` and `libX11.so.6`. On Debian/Ubuntu, install them with:
+   `sudo apt install libpulse0 libx11-6 libasound2 ca-certificates`.
+   Use `ldd lib/release/libdiscord_partner_sdk.so` on the target host and
+   resolve every `not found` entry before starting the worker. The development
+   packages `libpulse-dev` and `libx11-dev` are only needed if the host also
+   links directly against those libraries; the worker's direct build dependency
+   is `libasound2-dev`.
 4. ```bash
    cd worker && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
    ```
@@ -98,11 +103,15 @@ defines it for this executable. The worker also calls `discordpp::RunCallbacks()
 while waiting for asynchronous operations and during its main loop.
 
 The native build has been verified locally against the supplied header and
-`libdiscord_partner_sdk.so`. A live Discord account, a configured application
-with the required `openid` and `sdk.social_layer_presence` scopes, and a Linux
-host with the SDK runtime dependencies are still required to verify a real
-profile update. The no-SDK dry-run and Node contract harness remain available
-for CI and control-plane testing.
+`libdiscord_partner_sdk.so` from SDK 1.10.19337. Header inspection confirms the
+exact `UpdateToken` callback contract, asynchronous `Connect`/status flow,
+`UpdateRichPresence(Activity, callback)`, and void `ClearRichPresence()` API.
+A live Discord account, a configured application with the required `openid` and
+`sdk.social_layer_presence` scopes, and a Linux host with the runtime packages
+listed above are still required to verify a real profile update. The native
+worker refreshes its SDK bearer token when the API supplies a new token and
+reconnects/retries if the SDK session is no longer ready. The no-SDK dry-run and
+Node contract harness remain available for CI and control-plane testing.
 
 ### Run as a service
 
