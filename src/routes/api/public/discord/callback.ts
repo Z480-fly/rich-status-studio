@@ -8,7 +8,12 @@ import { createFileRoute } from "@tanstack/react-router";
  * only an opaque httpOnly session cookie.
  *
  * This exact URL must be registered in the Discord Developer Portal under
- * OAuth2 → Redirects:  https://<your-domain>/api/public/discord/callback
+ * OAuth2 → Redirects: https://rich-status-studio.lovable.app/api/public/discord/callback
+ *
+ * The exchange below reuses `discordRedirectUri()` rather than `url.origin` so
+ * the redirect_uri is byte-identical to the authorize request no matter which
+ * host (the real site, a preview URL or Discord's Activity proxy) serves this
+ * route.
  */
 export const Route = createFileRoute("/api/public/discord/callback")({
   server: {
@@ -25,11 +30,9 @@ export const Route = createFileRoute("/api/public/discord/callback")({
         if (!code) return back("?link=error&reason=missing_code");
 
         try {
-          const { exchangeCode, storeAccount, createSession, SESSION_COOKIE } = await import(
-            "@/lib/discord-oauth.server"
-          );
-          const redirectUri = `${url.origin}/api/public/discord/callback`;
-          const tokens = await exchangeCode(code, redirectUri);
+          const { exchangeCode, storeAccount, createSession, discordRedirectUri, SESSION_COOKIE } =
+            await import("@/lib/discord-oauth.server");
+          const tokens = await exchangeCode(code, discordRedirectUri());
           const user = await storeAccount(tokens);
           const session = await createSession(user.id);
 

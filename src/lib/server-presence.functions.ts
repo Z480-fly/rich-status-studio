@@ -24,14 +24,17 @@ export interface ServerPresenceStatus {
   activity: Json | null;
 }
 
-/** Builds the Discord OAuth2 URL the phone should open to link the account. */
+/**
+ * Builds the Discord OAuth2 URL the browser should open to link the account.
+ *
+ * The redirect target is always the production callback, never the origin this
+ * page happens to be served from — see `discordRedirectUri()`. Deriving it from
+ * the request is what produced "Invalid OAuth2 redirect_uri" when the button was
+ * pressed inside the Activity (served from Discord's proxy host).
+ */
 export const getDiscordLinkUrl = createServerFn({ method: "GET" }).handler(async () => {
-  const { authorizeUrl } = await import("./discord-oauth.server");
-  const origin =
-    process.env["PUBLIC_SITE_URL"] ??
-    (getRequestHeader("origin") || `https://${getRequestHeader("host") ?? ""}`);
-  const clean = origin.replace(/\/$/, "");
-  return { url: authorizeUrl(`${clean}/api/public/discord/callback`, crypto.randomUUID()) };
+  const { authorizeUrl, discordRedirectUri } = await import("./discord-oauth.server");
+  return { url: authorizeUrl(discordRedirectUri(), crypto.randomUUID()) };
 });
 
 export const getServerPresenceStatus = createServerFn({ method: "GET" }).handler(
