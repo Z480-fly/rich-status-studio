@@ -529,6 +529,7 @@ struct DiscordSession {
   discordpp::Client client;
   bool connecting = false;
   bool ready = false;
+  std::string accessToken;
 };
 
 class DiscordPool {
@@ -591,12 +592,25 @@ class DiscordPool {
           if (!result.Successful()) resultError = result.ToString();
           done.store(true);
         });
-    waitForCallback(&done);
+    if (!waitForCallback(&done)) {
+      *error = "UpdateRichPresence timed out waiting for the SDK callback";
+      return false;
+    }
     if (!resultError.empty()) {
       *error = "UpdateRichPresence failed: " + resultError;
       return false;
     }
     return true;
+  }
+
+  bool ready(const std::string& userId) const {
+    auto it = sessions_.find(userId);
+    return it != sessions_.end() && it->second.ready;
+  }
+
+  bool hasToken(const std::string& userId, const std::string& token) const {
+    auto it = sessions_.find(userId);
+    return it != sessions_.end() && it->second.accessToken == token;
   }
 
   bool clear(const std::string& userId, const std::string& token, std::string* error) {
@@ -615,7 +629,12 @@ class DiscordPool {
  private:
   void ensureConnected(DiscordSession* session, const std::string& userId,
                        const std::string& token) {
-    if (session->ready || session->connecting) return;
+    if (session->connecting) return;
+    if (session->ready && session->accessToken == token) return;
+    if (session->ready) {
+      updateToken(session, userId, token);
+      return;
+    }
     session->connecting = true;
 
     session->client.SetStatusChangedCallback(
@@ -639,18 +658,7 @@ class DiscordPool {
     // OAuth2 bearer token from the Zora API (scope includes the Social SDK
     // presence scope — see README "Known risks"). Bearer is the only token
     // type the SDK accepts for this flow.
-    std::atomic<bool> tokenDone{false};
-    std::string tokenError;
-    session->client.UpdateToken(discordpp::AuthorizationTokenType::Bearer, token,
-        [&tokenDone, &tokenError](discordpp::ClientResult result) {
-          if (!result.Successful()) tokenError = result.ToString();
-          tokenDone.store(true);
-        });
-    waitForCallback(&tokenDone);
-    if (!tokenError.empty()) {
-      session->connecting = false;
-      throw std::runtime_error("UpdateToken failed for user " + userId + ": " + tokenError);
-    }
+    updateToken(session, userId, token);
     session->client.Connect();
     logLine("[discord] connecting gateway for user " + userId);
 
@@ -666,14 +674,35 @@ class DiscordPool {
     }
   }
 
+  void updateToken(DiscordSession* session, const std::string& userId,
+                   const std::string& token) {
+    std::atomic<bool> tokenDone{false};
+    std::string tokenError;
+    session->client.UpdateToken(discordpp::AuthorizationTokenType::Bearer, token,
+        [&tokenDone, &tokenError](discordpp::ClientResult result) {
+          if (!result.Successful()) tokenError = result.ToString();
+          tokenDone.store(true);
+        });
+    if (!waitForCallback(&tokenDone)) {
+      session->connecting = false;
+      throw std::runtime_error("UpdateToken timed out for user " + userId);
+    }
+    if (!tokenError.empty()) {
+      session->connecting = false;
+      throw std::runtime_error("UpdateToken failed for user " + userId + ": " + tokenError);
+    }
+    session->accessToken = token;
+  }
+
   /// UpdateRichPresence/UpdateToken complete asynchronously on the SDK's own
   /// threads; block briefly for the callback so the reconcile pass sees the
   /// real result.
-  static void waitForCallback(std::atomic<bool>* done) {
+  static bool waitForCallback(std::atomic<bool>* done) {
     for (int i = 0; i < 100 && !done->load(); ++i) {
       discordpp::RunCallbacks();
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+    return done->load();
   }
 
   std::map<std::string, DiscordSession> sessions_;
@@ -683,6 +712,17 @@ class DiscordPool {
 
 class DiscordPool {
  public:
+  bool ready(const std::string& userId) const {
+    (void)userId;
+    return true;
+  }
+
+  bool hasToken(const std::string& userId, const std::string& token) const {
+    (void)userId;
+    (void)token;
+    return true;
+  }
+
   bool apply(const std::string& userId, const std::string& token,
              const JValue& activity, std::string* error) {
     (void)token;
@@ -771,7 +811,8 @@ class Worker {
     std::string message;
 
     if (running) {
-      if (revision != prev.revision || prev.appliedActivityJson != activityJson) {
+      if (revision != prev.revision || prev.appliedActivityJson != activityJson ||
+          !discord_.ready(userId) || !discord_.hasToken(userId, token)) {
         std::string error;
         try {
           if (discord_.apply(userId, token, activity ? *activity : JValue{}, &error)) {
