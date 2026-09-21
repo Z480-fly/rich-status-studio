@@ -1,10 +1,13 @@
 /**
  * Shape of a presence draft in this app.
  *
- * Only fields that Discord actually honours for an *embedded Activity* are
- * modelled here. Deliberately absent:
- *   - `name`    : always the Discord application's own name, not settable.
+ * Only fields that Discord actually honours are modelled here. Deliberately
+ * absent:
  *   - `buttons` : not supported by the Embedded App SDK (native apps only).
+ *
+ * `name` is special: the Embedded App SDK always shows the Discord
+ * application's own name and cannot override it, but the server-side Social SDK
+ * worker can via `Activity::SetName`. Leaving it empty keeps the default name.
  */
 
 export type ActivityTypeValue = 0 | 2 | 3 | 5;
@@ -19,6 +22,8 @@ export const ACTIVITY_TYPES: { value: ActivityTypeValue; label: string; verb: st
 export type TimestampMode = "none" | "elapsed" | "remaining";
 
 export interface PresenceDraft {
+  /** Custom activity name. Only the server-side worker can apply this. */
+  name: string;
   type: ActivityTypeValue;
   details: string;
   state: string;
@@ -41,6 +46,7 @@ export interface Preset {
 }
 
 const base: PresenceDraft = {
+  name: "",
   type: 0,
   details: "",
   state: "",
@@ -135,6 +141,7 @@ export const emptyDraft = base;
 export function buildActivityPayload(draft: PresenceDraft) {
   const activity: Record<string, unknown> = { type: draft.type };
 
+  if (draft.name.trim()) activity["name"] = draft.name.trim();
   if (draft.details.trim()) activity["details"] = draft.details.trim();
   if (draft.state.trim()) activity["state"] = draft.state.trim();
 

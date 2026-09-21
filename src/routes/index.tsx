@@ -25,6 +25,7 @@ import {
   type SavedPreset,
 } from "@/lib/presets.functions";
 import { ImagePicker } from "@/components/ImagePicker";
+import { ServerPresencePanel } from "@/components/ServerPresencePanel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -333,9 +334,14 @@ function PresenceStudio() {
           <div className="mt-6 rounded-2xl border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
             You're viewing this in a normal browser tab, so nothing can reach your profile here.
             Everything below works as a designer — launch it as an Activity inside a Discord voice
-            channel to actually go live.
+            channel to actually go live, or use server presence below to run a status from our
+            worker.
           </div>
         )}
+
+        <div className="mt-8">
+          <ServerPresencePanel draft={draft} />
+        </div>
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
@@ -638,7 +644,9 @@ function PresenceStudio() {
                   Activities — only to desktop apps.
                 </li>
                 <li>
-                  Your status lasts while the Activity is open, and disappears when you leave.
+                  In-Activity status lasts while the Activity is open and disappears when you leave.
+                  Server presence (above) keeps a status running after you close the app — that's the
+                  Linux worker's job.
                 </li>
               </ul>
             </div>

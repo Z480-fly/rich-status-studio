@@ -82,8 +82,10 @@ function validateActivity(input: { activity: Record<string, Json> }) {
   if (!input?.activity || typeof input.activity !== "object") {
     throw new Error("Nothing to publish.");
   }
-  // Only fields Discord actually accepts for rich presence.
-  const allowed = ["type", "details", "state", "timestamps", "assets", "party"] as const;
+  // Only fields Discord actually accepts for rich presence. `name` is only
+  // honoured by the server-side Social SDK worker (Activity::SetName); the
+  // embedded-SDK path keeps showing the Discord app's own name.
+  const allowed = ["name", "type", "details", "state", "timestamps", "assets", "party"] as const;
   const activity: Record<string, Json> = {};
   for (const key of allowed) {
     if (key in input.activity) activity[key] = input.activity[key] as Json;
