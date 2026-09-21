@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ACTIVITY_TYPES,
   PRESETS,
+  verbFor,
   buildActivityPayload,
   normalizeHex,
   studioBackgroundStyle,
@@ -770,7 +771,7 @@ function PresenceStudio() {
             <div className="mt-5 space-y-5">
               <div>
                 <Label>Activity type</Label>
-                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
                   {ACTIVITY_TYPES.map((t) => (
                     <button
                       key={t.value}
@@ -1071,7 +1072,7 @@ function PresenceCard({
   accent: string;
   liveStart: number | null;
 }) {
-  const verb = ACTIVITY_TYPES.find((t) => t.value === draft.type)?.verb ?? "Playing";
+  const verb = verbFor(draft.type);
   const color = normalizeHex(draft.color);
   // Whatever Discord will actually fetch: your photo, else the colour swatch.
   // Fetched from this same origin so the preview renders before it is published.
@@ -1100,7 +1101,7 @@ function PresenceCard({
   return (
     <div className="mt-4 rounded-2xl border border-border bg-background/70 p-4">
       <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
-        {verb}
+        {verb || "Custom"}
       </p>
       <div className="mt-3 flex gap-3">
         <div className="relative shrink-0">
