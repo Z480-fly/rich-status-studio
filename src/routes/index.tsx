@@ -771,7 +771,7 @@ function PresenceStudio() {
             <div className="mt-5 space-y-5">
               <div>
                 <Label>Activity type</Label>
-                <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-5">
+                <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {ACTIVITY_TYPES.map((t) => (
                     <button
                       key={t.value}
