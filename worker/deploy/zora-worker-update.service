@@ -1,0 +1,13 @@
+[Unit]
+Description=Zora presence worker — pull-based redeploy
+Documentation=https://github.com/Z480-fly/rich-status-studio/blob/main/worker/deploy/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The repository is public, so this fetch needs no credentials and no inbound
+# access. deploy.sh is a no-op when the installed commit is already current.
+WorkingDirectory=/opt/rich-status-studio
+ExecStart=/bin/bash /opt/rich-status-studio/worker/deploy/deploy.sh --branch main
+Nice=10
