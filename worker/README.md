@@ -13,8 +13,9 @@ The Discord Social SDK is a **native C/C++ library** (`libdiscord_partner_sdk.so
 on Linux). Lovable's hosting runs the web app in a Cloudflare Worker sandbox,
 which cannot load native shared libraries or hold a long-lived socket.
 So the web/API half runs on Lovable, and this binary runs on any cheap Linux VM
-(Oracle free tier, Hetzner, Fly.io machine, a Raspberry Pi — anything with
-glibc x86_64/aarch64 and outbound internet).
+(Oracle free tier, Hetzner, Fly.io machine — anything with glibc **x86_64** and
+outbound internet). The SDK ships a Linux library for x86-64 only, so ARM hosts
+(Raspberry Pi, Oracle's A1 shapes, arm64 runners) cannot run it at all.
 
 Discord does not officially market the Social SDK as a "personal presence host".
 Treat this as a working proof of concept, not a supported product configuration.
@@ -78,8 +79,11 @@ Copy `.env.example` to `.env`:
    Do not commit this directory or its binaries.
 3. Install build deps: `sudo apt install build-essential cmake libcurl4-openssl-dev libasound2-dev`.
    The SDK's Linux shared library also declares these runtime dependencies:
-   `libpulse.so.0` and `libX11.so.6`. On Debian/Ubuntu, install them with:
-   `sudo apt install libpulse0 libx11-6 libasound2 ca-certificates`.
+   `libpulse.so.0`, `libX11.so.6` and `libatomic.so.1`. On Debian/Ubuntu,
+   install them with:
+   `sudo apt install libpulse0 libx11-6 libasound2 libatomic1 ca-certificates`.
+   (Ubuntu 24.04 renamed several of these with a `t64` suffix, so the deploy
+   scripts install whichever names the running release actually provides.)
    Use `ldd lib/release/libdiscord_partner_sdk.so` on the target host and
    resolve every `not found` entry before starting the worker. The development
    packages `libpulse-dev` and `libx11-dev` are only needed if the host also
@@ -127,6 +131,13 @@ journalctl -u zora-presence-worker -f
 
 If you cannot get a shell on the VM (broken console, IPv6-only host, no SSH),
 use the credential-free bootstrap in [`deploy/README.md`](deploy/README.md).
+
+For a **free-forever 24/7 host you can provision entirely from a browser**, see
+[`deploy/ORACLE-ALWAYS-FREE.md`](deploy/ORACLE-ALWAYS-FREE.md): create one
+`VM.Standard.E2.1.Micro` instance (AMD x86-64) and paste
+[`deploy/cloud-init-oracle.yaml`](deploy/cloud-init-oracle.yaml) into its
+cloud-init field. The VM installs the runtime libraries, clones this repository,
+builds the worker and starts the systemd service by itself.
 One paste into the server panel's user-data field installs the packages, builds
 the worker, installs it as a systemd service, and schedules pull-based redeploys
 on every push to `main` — followed by one command for repeat runs:

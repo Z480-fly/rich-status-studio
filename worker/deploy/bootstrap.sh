@@ -60,11 +60,37 @@ export DEBIAN_FRONTEND=noninteractive
 
 log "installing packages (build toolchain + SDK runtime libraries)"
 apt-get update -qq || warn "apt-get update failed; trying to continue"
-apt-get install -y --no-install-recommends \
-  ca-certificates curl git cmake build-essential pkg-config unzip \
-  libcurl4-openssl-dev libasound2-dev \
-  libpulse0 libx11-6 libasound2 \
-  || fail "apt-get install failed"
+
+# libdiscord_partner_sdk.so declares these runtime dependencies:
+#   libasound.so.2 → libasound2/t64   libpulse.so.0 → libpulse0/t64
+#   libX11.so.6    → libx11-6         libatomic.so.1 → libatomic1
+# plus libcurl for the worker's own HTTPS polling (libcurl4, pulled in by
+# libcurl4-openssl-dev). Package names move between Ubuntu releases — 24.04
+# renamed several of them with a t64 suffix (libasound2 → libasound2t64,
+# libcurl4 → libcurl4t64), so a fixed list fails on the release that renamed
+# them. Install the subset this release actually provides, and fall back to the
+# historical list if apt cannot be queried at all.
+PKG_CANDIDATES=(
+  ca-certificates curl git cmake build-essential pkg-config unzip
+  libcurl4-openssl-dev libasound2-dev
+  libpulse0 libpulse0t64 libx11-6 libasound2 libasound2t64
+  libatomic1 libcurl4 libcurl4t64
+)
+PKG_LIST=()
+for pkg in "${PKG_CANDIDATES[@]}"; do
+  if apt-cache show "$pkg" >/dev/null 2>&1; then
+    PKG_LIST+=("$pkg")
+  fi
+done
+if [ "${#PKG_LIST[@]}" -eq 0 ]; then
+  warn "apt-cache returned nothing — falling back to the historical package list"
+  PKG_LIST=(
+    ca-certificates curl git cmake build-essential pkg-config unzip
+    libcurl4-openssl-dev libasound2-dev libpulse0 libx11-6 libasound2
+  )
+fi
+apt-get install -y --no-install-recommends "${PKG_LIST[@]}" || fail "apt-get install failed"
+log "installed: ${PKG_LIST[*]}"
 
 # ---------------------------------------------------------------------------
 # 2. Repository + service user
