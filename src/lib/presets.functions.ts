@@ -28,6 +28,31 @@ function requireToken(input: unknown): { accessToken: string } {
   return { accessToken: data.accessToken };
 }
 
+/**
+ * Resolves the acting user from the Embedded Activity's access token when one
+ * was passed, otherwise from the app session cookie set by the browser OAuth
+ * link.
+ *
+ * Both surfaces are legitimate: inside an Activity the Discord iframe never
+ * receives the production cookie, and outside it there is no SDK access token.
+ * Photo uploads have to work from either one.
+ */
+async function actingUserId(accessToken?: string): Promise<string> {
+  if (accessToken) return discordUserId(accessToken);
+
+  const [{ getRequestHeader }, { readSessionCookie, sessionUser }] = await Promise.all([
+    import("@tanstack/react-start/server"),
+    import("./discord-oauth.server"),
+  ]);
+  const userId = await sessionUser(readSessionCookie(getRequestHeader("cookie")));
+  if (!userId) {
+    throw new Error(
+      "Link your Discord account in a browser tab first — photos are stored against your account.",
+    );
+  }
+  return userId;
+}
+
 export interface SavedPreset {
   id: string;
   name: string;
@@ -132,17 +157,21 @@ export const deleteSavedPreset = createServerFn({ method: "POST" })
  * Stores a photo picked on the phone and returns a permanent https URL that
  * Discord can fetch. The bucket itself stays private — the image is served
  * back through this app's own public image route.
+ *
+ * Identity comes from the Activity's access token or, in a plain browser tab,
+ * from the linked-account session cookie.
  */
 export const uploadPresenceImage = createServerFn({ method: "POST" })
-  .validator((input: { accessToken: string; dataUrl: string }) => {
-    const { accessToken } = requireToken(input);
-    if (typeof input.dataUrl !== "string" || !input.dataUrl.startsWith("data:image/")) {
+  .validator((input: { accessToken?: string; dataUrl: string }) => {
+    if (typeof input?.dataUrl !== "string" || !input.dataUrl.startsWith("data:image/")) {
       throw new Error("That wasn't a usable image.");
     }
+    const accessToken =
+      typeof input.accessToken === "string" && input.accessToken ? input.accessToken : undefined;
     return { accessToken, dataUrl: input.dataUrl };
   })
   .handler(async ({ data }) => {
-    const userId = await discordUserId(data.accessToken);
+    const userId = await actingUserId(data.accessToken);
 
     const match = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(data.dataUrl);
     if (!match) throw new Error("That wasn't a usable image.");
