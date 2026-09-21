@@ -9,14 +9,31 @@
 
 import { PUBLIC_SITE_ORIGIN } from "./site";
 
-export type ActivityTypeValue = 0 | 2 | 3 | 5;
+export type ActivityTypeValue = 0 | 1 | 2 | 3 | 4 | 5;
 
+/**
+ * The verb Discord renders above the status, one per activity type.
+ *
+ * "Custom" (4) has no fixed verb: Discord renders it in the modern client as
+ * a plain highlighted line with the details text. The streaming verb only
+ * applies when the payload also carries a Twitch URL — see STREAMING_URL.
+ */
 export const ACTIVITY_TYPES: { value: ActivityTypeValue; label: string; verb: string }[] = [
   { value: 0, label: "Playing", verb: "Playing" },
+  { value: 1, label: "Streaming", verb: "Streaming" },
   { value: 2, label: "Listening", verb: "Listening to" },
   { value: 3, label: "Watching", verb: "Watching" },
   { value: 5, label: "Competing", verb: "Competing in" },
+  { value: 4, label: "Custom", verb: "" },
 ];
+
+/** Type 1 renders as Streaming only with a Twitch URL attached to the payload. */
+export const STREAMING_URL = "https://twitch.tv/discord";
+
+/** Finds the verb for a type value, tolerating types outside this app's list. */
+export function verbFor(type: number): string {
+  return ACTIVITY_TYPES.find((t) => t.value === type)?.verb ?? "";
+}
 
 export type TimestampMode = "none" | "elapsed" | "remaining";
 
@@ -196,6 +213,10 @@ export function swatchUrl(hex: string): string {
 /** Builds the exact payload sent to Discord's setActivity command. */
 export function buildActivityPayload(draft: PresenceDraft) {
   const activity: Record<string, unknown> = { type: draft.type };
+
+  // Streaming only reads as "Streaming" when the payload carries a Twitch URL;
+  // Discord accepts any https URL here, a placeholder is enough to flip the verb.
+  if (draft.type === 1 && !activity["url"]) activity["url"] = STREAMING_URL;
 
   if (draft.details.trim()) activity["details"] = draft.details.trim();
   if (draft.state.trim()) activity["state"] = draft.state.trim();
