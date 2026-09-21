@@ -5,7 +5,28 @@
  * context — the browser only ever receives an opaque app session cookie.
  */
 
+import { PUBLIC_SITE_ORIGIN } from "./site";
+
 export const DISCORD_SCOPES = ["identify", "sdk.social_layer_presence"] as const;
+
+/** The origin this app is served from in production, overridable with `PUBLIC_SITE_URL`. */
+export function publicSiteOrigin(): string {
+  return (process.env["PUBLIC_SITE_URL"] ?? PUBLIC_SITE_ORIGIN).replace(/\/+$/, "");
+}
+
+/**
+ * The one Discord OAuth callback URL this app uses — for both the authorize
+ * request and the token exchange, and the exact string that must be listed in
+ * the Discord Developer Portal under OAuth2 → Redirects.
+ *
+ * Deliberately never derived from the incoming request: the same build is also
+ * served from Discord's Activity proxy (`<client_id>.discordsays.com`), from
+ * preview hosts and from localhost, and Discord answers any redirect_uri it
+ * does not have registered with "Invalid OAuth2 redirect_uri".
+ */
+export function discordRedirectUri(): string {
+  return `${publicSiteOrigin()}/api/public/discord/callback`;
+}
 
 export interface DiscordTokens {
   access_token: string;

@@ -33,6 +33,7 @@ import {
   type Json,
   type ServerPresenceStatus,
 } from "@/lib/server-presence.functions";
+import { PUBLIC_SITE_ORIGIN } from "@/lib/site";
 import { ImagePicker } from "@/components/ImagePicker";
 
 export const Route = createFileRoute("/")({
@@ -363,6 +364,16 @@ function PresenceStudio() {
   const buildServerActivity = () => buildActivityPayload(draft) as Record<string, Json>;
 
   const handleLinkDiscord = async () => {
+    // Discord rejects an OAuth redirect started inside the Activity iframe, so
+    // the button is hidden there. This guard keeps any future caller from
+    // sending the browser to that dead end.
+    if (isInsideDiscord()) {
+      setStatus({
+        kind: "error",
+        message: `Discord blocks account linking inside an Activity. Open ${PUBLIC_SITE_ORIGIN} in your browser and link from there.`,
+      });
+      return;
+    }
     setSpBusy(true);
     try {
       const { url } = await getDiscordLinkUrl();
@@ -497,20 +508,37 @@ function PresenceStudio() {
           {!sp ? (
             <p className="mt-4 text-sm text-muted-foreground">Checking link status…</p>
           ) : !sp.linked ? (
-            <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-              <button
-                type="button"
-                onClick={() => void handleLinkDiscord()}
-                disabled={spBusy}
-                className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-              >
-                Link Discord account
-              </button>
-              <span className="text-xs text-muted-foreground">
-                One-time Discord OAuth — only <code>identify</code> and the presence scope are
-                requested. No password, no user token.
-              </span>
-            </div>
+            inDiscord ? (
+              /*
+               * Inside the Activity the page is served from Discord's proxy host, so
+               * Discord refuses the OAuth redirect ("Invalid OAuth2 redirect_uri").
+               * Offering the button there only led people to a Discord error screen.
+               */
+              <div className="mt-4 rounded-xl border border-border bg-background/60 p-3">
+                <p className="text-sm font-medium">Link from a browser tab to go live</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Discord blocks account linking inside an Activity, so this button only appears
+                  outside Discord. Open <code className="break-all">{PUBLIC_SITE_ORIGIN}</code> in
+                  your browser and use “Link Discord account” there — once. The worker keeps your
+                  status running from then on, wherever you are.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                <button
+                  type="button"
+                  onClick={() => void handleLinkDiscord()}
+                  disabled={spBusy}
+                  className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  Link Discord account
+                </button>
+                <span className="text-xs text-muted-foreground">
+                  One-time Discord OAuth — only <code>identify</code> and the presence scope are
+                  requested. No password, no user token.
+                </span>
+              </div>
+            )
           ) : (
             <div className="mt-4 space-y-4">
               <div className="flex flex-wrap items-center gap-2">
