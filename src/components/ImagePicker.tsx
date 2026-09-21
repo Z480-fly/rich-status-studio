@@ -28,12 +28,12 @@ export function ImagePicker({
       const dataUrl = await fileToResizedDataUrl(file);
       setLocalPreview(dataUrl);
 
+      // Inside an Activity the SDK token identifies the account; in a browser
+      // tab the linked-account session cookie does. The server accepts either.
       const accessToken = getAccessToken();
-      if (!accessToken) {
-        throw new Error("Connect to Discord first — photos are stored against your account.");
-      }
-
-      const { url } = await uploadPresenceImage({ data: { accessToken, dataUrl } });
+      const { url } = await uploadPresenceImage({
+        data: accessToken ? { accessToken, dataUrl } : { dataUrl },
+      });
       onChange(url);
       setLocalPreview("");
     } catch (e) {
