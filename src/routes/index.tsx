@@ -50,7 +50,7 @@ export const Route = createFileRoute("/")({
         content:
           "Design a custom Discord rich presence with presets, artwork, timers and live preview, then push it to your profile from inside the Activity.",
       },
-      { property: "og:title", content: "Presence Studio — Custom Discord Rich Presence" },
+      { property: "og:title", content: "Zora Studio — Custom Discord Rich Presence" },
       {
         property: "og:description",
         content:
