@@ -1,0 +1,11 @@
+--
+-- Reminder: as of 2026-09-22 the Activity Bridge migration is not yet applied to
+-- the connected Supabase project.
+--
+-- Apply with:  supabase db push
+-- Or via the dashboard SQL editor:  supabase/migrations/20260922070000_zora_activity_bridge.sql
+--
+-- Code merged by PRs #17 and #18.
+-- Live still uses a previous published build until Lovable => Publish / Update.
+-- Then the Activity Bridge panel becomes usable after migration.
+--
