@@ -540,9 +540,11 @@ class DiscordPool {
     ensureConnected(&session, userId, token);
 
     // Map the server-validated activity JSON onto the SDK struct using the
-    // Activity setters from discordpp.h (partial activity: the SDK fills in
-    // name/applicationId itself).
+    // Activity setters from discordpp.h. applicationId is filled by the SDK;
+    // we explicitly set the display name so the Activity Status shows the
+    // desired label regardless of the Discord application name in the portal.
     discordpp::Activity a{};
+    a.SetName("𝒁𝒐𝒓𝒂 𝑺𝒕𝒖𝒅𝒊𝒐 ✦");
     if (const JValue* v = activity.find("type"); v && v->type == JValue::Type::Number) {
       a.SetType(static_cast<discordpp::ActivityTypes>(
           std::max(0, std::min(6, (int)std::llround(v->number)))));
@@ -629,26 +631,30 @@ class DiscordPool {
  private:
   void ensureConnected(DiscordSession* session, const std::string& userId,
                        const std::string& token) {
-    if (session->connecting) return;
     if (session->ready && session->accessToken == token) return;
-    if (session->ready) {
-      updateToken(session, userId, token);
-      return;
+    if (session->connecting) {
+      // Wait for the in-flight connect to finish.
+      for (int i = 0; i < 300 && session->connecting; ++i) {
+        discordpp::RunCallbacks();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+      if (session->ready && session->accessToken == token) return;
     }
+
     session->connecting = true;
+    session->ready = false;
 
     session->client.SetStatusChangedCallback(
-        [session, userId](discordpp::Client::Status status, discordpp::Client::Error error,
-                          int32_t errorDetail) {
+        [session, userId](discordpp::Client::Status status,
+                          discordpp::Client::Error error, int32_t errorDetail) {
           if (status == discordpp::Client::Status::Ready) {
             session->ready = true;
-            logLine("[discord] gateway ready for user " + userId);
+            logLine("[discord] ready for user " + userId);
           } else if (status == discordpp::Client::Status::Disconnected ||
-                     status == discordpp::Client::Status::Disconnecting) {
+                     status == discordpp::Client::Status::Failed) {
             session->ready = false;
-            session->connecting = false;
             if (error != discordpp::Client::Error::None) {
-              logLine("[discord] gateway dropped for user " + userId + ": " +
+              logLine("[discord] status error for user " + userId + ": " +
                       discordpp::Client::ErrorToString(error) + " detail=" +
                       std::to_string(errorDetail));
             }
@@ -725,16 +731,18 @@ class DiscordPool {
 
   bool apply(const std::string& userId, const std::string& token,
              const JValue& activity, std::string* error) {
+    (void)userId;
     (void)token;
     (void)error;
-    logLine("[dry-run] apply user=" + userId + " activity=" + briefJson(activity));
+    logLine("[dry-run] would apply activity " + briefJson(activity));
     return true;
   }
 
   bool clear(const std::string& userId, const std::string& token, std::string* error) {
+    (void)userId;
     (void)token;
     (void)error;
-    logLine("[dry-run] clear user=" + userId);
+    logLine("[dry-run] would clear presence");
     return true;
   }
 };
@@ -742,38 +750,43 @@ class DiscordPool {
 #endif  // ZORA_HAVE_DISCORD_SDK
 
 // ---------------------------------------------------------------------------
-// Worker loop
+// Worker: poll the Zora API, reconcile each session, heartbeat results.
 // ---------------------------------------------------------------------------
 
 struct SessionState {
-  long long revision = -1;                 // forces an apply on first sight
+  int64_t revision = -1;
   std::string desiredState;
-  std::string appliedActivityJson;         // "" = nothing currently applied
+  std::string appliedActivityJson;
 };
 
 class Worker {
  public:
-  explicit Worker(Config cfg) : cfg_(std::move(cfg)) {}
+  explicit Worker(Config cfg) : cfg_(std::move(cfg)), pool_() {}
 
-  // One poll → reconcile → heartbeat pass. Throws on poll/transport errors.
   void pollOnce() {
-    HttpResponse res = httpRequest(cfg_.apiBase + "/api/public/worker/poll", cfg_.secret, "");
-    if (!res.error.empty()) throw std::runtime_error(std::string("poll: ") + res.error);
-    if (res.status == 401) {
+    const std::string url = cfg_.apiBase + "/api/public/worker/poll";
+    HttpResponse resp = httpRequest(url, cfg_.secret, "");
+    if (!resp.error.empty()) {
+      throw std::runtime_error("poll HTTP error: " + resp.error);
+    }
+    if (resp.status == 401) {
       throw std::runtime_error("poll: 401 Unauthorized — WORKER_SHARED_SECRET mismatch");
     }
-    if (res.status / 100 != 2) {
-      throw std::runtime_error("poll: HTTP " + std::to_string(res.status));
+    if (resp.status < 200 || resp.status >= 300) {
+      throw std::runtime_error("poll: HTTP " + std::to_string(resp.status));
     }
 
-    JValue payload;
+    JValue root;
     std::string err;
-    if (!JsonParser(res.body).parse(&payload, &err)) {
-      throw std::runtime_error("poll: bad JSON: " + err);
+    if (!JsonParser(resp.body).parse(&root, &err)) {
+      throw std::runtime_error("poll JSON parse: " + err);
     }
-    const JValue* list = payload.find("sessions");
-    if (!list || list->type != JValue::Type::Array) return;
-    for (const JValue& session : list->array) {
+    const JValue* sessions = root.find("sessions");
+    if (!sessions || sessions->type != JValue::Type::Array) {
+      throw std::runtime_error("poll: missing sessions array");
+    }
+
+    for (const JValue& session : sessions->array) {
       reconcile(session);
     }
   }
@@ -781,142 +794,117 @@ class Worker {
  private:
   void reconcile(const JValue& session) {
     const JValue* idVal = session.find("discord_user_id");
-    if (!idVal || idVal->type != JValue::Type::String || idVal->string.empty()) return;
+    if (!idVal || idVal->type != JValue::Type::String) return;
     const std::string userId = idVal->string;
+    if (userId.empty()) return;
 
-    long long revision = 0;
-    if (const JValue* rev = session.find("revision"); rev && rev->type == JValue::Type::Number) {
-      revision = (long long)std::llround(rev->number);
-    }
+    const JValue* revVal = session.find("revision");
+    int64_t revision = revVal && revVal->type == JValue::Type::Number
+                           ? (int64_t)std::llround(revVal->number)
+                           : 0;
 
-    bool running = false;
-    if (const JValue* d = session.find("desired_state"); d && d->type == JValue::Type::String) {
-      running = d->string == "running";
-    }
-
-    std::string token;
-    if (const JValue* t = session.find("access_token"); t && t->type == JValue::Type::String) {
-      token = t->string;
-    }
-
-    const JValue* activity = session.find("activity");
-    std::string activityJson = "null";
-    if (activity && activity->type != JValue::Type::Null) {
-      dumpValue(*activity, &activityJson);
-    }
+    const JValue* desiredVal = session.find("desired_state");
+    std::string desired =
+        (desiredVal && desiredVal->type == JValue::Type::String && desiredVal->string == "running")
+            ? "running"
+            : "stopped";
 
     SessionState& prev = sessions_[userId];
 
     std::string state;
     std::string message;
 
-    if (running) {
-      if (revision != prev.revision || prev.appliedActivityJson != activityJson ||
-          !discord_.ready(userId) || !discord_.hasToken(userId, token)) {
-        std::string error;
-        try {
-          if (discord_.apply(userId, token, activity ? *activity : JValue{}, &error)) {
-            state = "running";
-            prev.appliedActivityJson = activityJson;
-          } else {
-            state = "error";
-            message = error.substr(0, 400);
-          }
-        } catch (const std::exception& e) {
+    if (desired == "running") {
+      const JValue* act = session.find("activity");
+      JValue activity = act ? *act : JValue{};
+      std::string activityJson;
+      dumpValue(activity, &activityJson);
+
+      const bool needsApply =
+          revision != prev.revision || prev.appliedActivityJson != activityJson;
+      if (needsApply) {
+        const JValue* tok = session.find("access_token");
+        std::string token = (tok && tok->type == JValue::Type::String) ? tok->string : "";
+        std::string err;
+        if (pool_.apply(userId, token, activity, &err)) {
+          state = "running";
+          prev.appliedActivityJson = activityJson;
+        } else {
           state = "error";
-          message = std::string(e.what()).substr(0, 400);
+          message = err;
         }
       } else {
         state = "running";  // unchanged — heartbeat keeps liveness
       }
     } else if (!prev.appliedActivityJson.empty()) {
-      std::string error;
-      try {
-        if (discord_.clear(userId, token, &error)) {
-          state = "cleared";
-          prev.appliedActivityJson.clear();
-        } else {
-          state = "error";
-          message = error.substr(0, 400);
-        }
-      } catch (const std::exception& e) {
+      const JValue* tok = session.find("access_token");
+      std::string token = (tok && tok->type == JValue::Type::String) ? tok->string : "";
+      std::string err;
+      if (pool_.clear(userId, token, &err)) {
+        state = "cleared";
+        prev.appliedActivityJson.clear();
+      } else {
         state = "error";
-        message = std::string(e.what()).substr(0, 400);
+        message = err;
       }
     } else {
       state = "cleared";  // nothing applied — nothing to clear
     }
 
     prev.revision = revision;
-    prev.desiredState = running ? "running" : "stopped";
+    prev.desiredState = desired;
 
-    sendHeartbeat(userId, state, message, revision);
-    logLine("[session] " + userId + " desired=" + (running ? "running" : "stopped") +
-            " → " + state + (message.empty() ? "" : " (" + message + ")") +
-            " rev=" + std::to_string(revision));
-  }
-
-  void sendHeartbeat(const std::string& userId, const std::string& state,
-                     const std::string& message, long long revision) {
+    // Always heartbeat so the control plane sees worker liveness.
     JValue body;
     body.type = JValue::Type::Object;
-    JValue id;
-    id.type = JValue::Type::String;
-    id.string = userId;
-    body.object["discord_user_id"] = std::move(id);
-    JValue st;
-    st.type = JValue::Type::String;
-    st.string = state;
-    body.object["state"] = std::move(st);
-    JValue msg;
-    if (message.empty()) {
-      msg.type = JValue::Type::Null;
-    } else {
-      msg.type = JValue::Type::String;
-      msg.string = message;
+    body.object["discord_user_id"].type = JValue::Type::String;
+    body.object["discord_user_id"].string = userId;
+    body.object["state"].type = JValue::Type::String;
+    body.object["state"].string = state;
+    if (!message.empty()) {
+      body.object["message"].type = JValue::Type::String;
+      body.object["message"].string = message;
     }
-    body.object["message"] = std::move(msg);
-    JValue rev;
-    rev.type = JValue::Type::Number;
-    rev.number = (double)revision;
-    rev.isInt = true;
-    body.object["revision"] = std::move(rev);
+    body.object["revision"].type = JValue::Type::Number;
+    body.object["revision"].number = (double)revision;
+    body.object["revision"].isInt = true;
 
-    std::string json;
-    dumpValue(body, &json);
-    HttpResponse res =
-        httpRequest(cfg_.apiBase + "/api/public/worker/heartbeat", cfg_.secret, json);
-    if (!res.error.empty() || res.status / 100 != 2) {
+    std::string bodyJson;
+    dumpValue(body, &bodyJson);
+    const std::string hbUrl = cfg_.apiBase + "/api/public/worker/heartbeat";
+    HttpResponse hb = httpRequest(hbUrl, cfg_.secret, bodyJson);
+    if (!hb.error.empty() || hb.status < 200 || hb.status >= 300) {
       logLine("[heartbeat] failed for " + userId + ": " +
-              (res.error.empty() ? ("HTTP " + std::to_string(res.status)) : res.error));
+              (hb.error.empty() ? ("HTTP " + std::to_string(hb.status)) : hb.error));
     }
+    logLine("[session] " + userId + " desired=" + desired + " → " + state +
+            (message.empty() ? "" : (" (" + message + ")")) + " rev=" +
+            std::to_string(revision));
   }
 
   Config cfg_;
-  DiscordPool discord_;
+  DiscordPool pool_;
   std::map<std::string, SessionState> sessions_;
 };
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  (void)argc;
+  (void)argv;
   loadDotenv(".env");
   Config cfg = loadConfig();
   if (cfg.apiBase.empty() || cfg.secret.empty()) {
-    logLine("ZORA_API_BASE and WORKER_SHARED_SECRET are required (env or .env). "
-            "See worker/README.md.");
+    logLine("ZORA_API_BASE and WORKER_SHARED_SECRET are required. See worker/README.md.");
     return 1;
   }
-
-#ifdef ZORA_HAVE_DISCORD_SDK
-  logLine("zora-presence-worker: Social SDK mode, app id " + cfg.discordAppId);
-#else
-  logLine("zora-presence-worker: DRY-RUN mode (no Social SDK) — presence "
-          "updates are logged, not pushed. See worker/README.md.");
-#endif
-  logLine("polling " + cfg.apiBase + "/api/public/worker/poll every " +
+  logLine("worker starting; api=" + cfg.apiBase + " poll=" +
           std::to_string(cfg.pollIntervalMs) + "ms");
-
+#ifdef ZORA_HAVE_DISCORD_SDK
+  logLine("Discord Social SDK present — real presence");
+#else
+  logLine("Discord Social SDK absent — dry-run mode");
+#endif
   curl_global_init(CURL_GLOBAL_DEFAULT);
   Worker worker(std::move(cfg));
   while (true) {
