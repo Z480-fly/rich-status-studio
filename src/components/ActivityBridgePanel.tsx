@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS: ActivityBridgeSettings = {
 export function ActivityBridgePanel() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
   const [status, setStatus] = useState<PanelStatus>({ kind: "idle", message: "" });
   const [shortcutToken, setShortcutToken] = useState<string | null>(null);
 
@@ -29,12 +30,21 @@ export function ActivityBridgePanel() {
     getActivityBridgeSettings({ data: undefined })
       .then(setSettings)
       .catch((error) => {
-        setStatus({ kind: "error", message: error instanceof Error ? error.message : "Could not load settings." });
+        const message = error instanceof Error ? error.message : "Could not load settings.";
+        const missingTable = message.includes("activity_bridge_settings");
+        setSetupRequired(missingTable);
+        setStatus({
+          kind: missingTable ? "idle" : "error",
+          message: missingTable
+            ? "Activity Bridge is waiting for its database setup."
+            : message,
+        });
       })
       .finally(() => setLoading(false));
   }, []);
 
   const updateSettings = (next: ActivityBridgeSettings) => {
+    if (setupRequired) return;
     setSettings(next);
     setStatus({ kind: "busy", message: "Saving…" });
     void saveActivityBridgeSettings({ data: next })
@@ -55,6 +65,7 @@ export function ActivityBridgePanel() {
   };
 
   const generateToken = async () => {
+    if (setupRequired) return;
     setStatus({ kind: "busy", message: "Creating a private Shortcut token…" });
     try {
       const result = await createActivityBridgeToken({ data: undefined });
@@ -67,6 +78,7 @@ export function ActivityBridgePanel() {
 
   const deleteHistory = async () => {
     if (!window.confirm("Delete your Activity Bridge history?")) return;
+    if (setupRequired) return;
     setStatus({ kind: "busy", message: "Deleting activity history…" });
     try {
       await deleteActivityBridgeHistory({ data: undefined });
@@ -87,16 +99,26 @@ export function ActivityBridgePanel() {
           </p>
         </div>
         <label className="inline-flex min-h-11 items-center gap-3 rounded-xl border border-border bg-secondary px-3 py-2 text-sm font-semibold">
-          <span>{settings.enabled ? "On" : "Off"}</span>
-          <input
-            type="checkbox"
-            checked={settings.enabled}
-            disabled={loading || status.kind === "busy"}
+          <span>{settings.enabled ? "On" : "Off"}</span>            <input
+              type="checkbox"
+              checked={settings.enabled}
+              disabled={setupRequired || loading || status.kind === "busy"}
             onChange={(event) => updateSettings({ ...settings, enabled: event.target.checked })}
             className="size-5 accent-primary"
           />
         </label>
       </div>
+
+      {setupRequired && (
+        <div className="mt-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-muted-foreground">
+          <p className="font-semibold text-foreground">Activity Bridge setup is still pending</p>
+          <p className="mt-1">
+            The app code is ready, but the Supabase migration has not been applied yet. Once
+            <code className="mx-1">activity_bridge_settings</code> exists, reload this page to enable
+            sharing controls.
+          </p>
+        </div>
+      )}
 
       <div className="mt-5 rounded-xl border border-border bg-background/50 p-4">
         <h3 className="text-sm font-semibold text-foreground">Apps you share</h3>
@@ -109,7 +131,7 @@ export function ActivityBridgePanel() {
               <input
                 type="checkbox"
                 checked={settings.sharedApps.includes(app.name)}
-                disabled={!settings.enabled || loading || status.kind === "busy"}
+                disabled={setupRequired || !settings.enabled || loading || status.kind === "busy"}
                 onChange={() => toggleApp(app.name)}
                 className="size-4 accent-primary"
               />
@@ -127,7 +149,7 @@ export function ActivityBridgePanel() {
             <button
               key={visibility}
               type="button"
-              disabled={loading || status.kind === "busy"}
+              disabled={setupRequired || loading || status.kind === "busy"}
               onClick={() => updateSettings({ ...settings, visibility })}
               className={`min-h-11 rounded-xl border px-4 py-2 text-sm font-semibold capitalize ${
                 settings.visibility === visibility
@@ -157,7 +179,7 @@ export function ActivityBridgePanel() {
         <button
           type="button"
           onClick={() => void generateToken()}
-          disabled={!settings.enabled || status.kind === "busy"}
+          disabled={setupRequired || !settings.enabled || status.kind === "busy"}
           className="mt-4 min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
         >
           Generate private Shortcut token
@@ -181,7 +203,7 @@ export function ActivityBridgePanel() {
         <button
           type="button"
           onClick={() => void deleteHistory()}
-          disabled={status.kind === "busy"}
+          disabled={setupRequired || status.kind === "busy"}
           className="min-h-11 rounded-xl border border-destructive/40 px-4 py-2 text-sm font-semibold text-destructive hover:bg-destructive/10 disabled:opacity-60"
         >
           Delete activity history
