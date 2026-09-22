@@ -44,13 +44,13 @@ import { ImagePicker } from "@/components/ImagePicker";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Zora Studio — Custom Discord Rich Presence" },
+      { title: "Presence Studio — Custom Discord Rich Presence" },
       {
         name: "description",
         content:
           "Design a custom Discord rich presence with presets, artwork, timers and live preview, then push it to your profile from inside the Activity.",
       },
-      { property: "og:title", content: "Zora Studio — Custom Discord Rich Presence" },
+      { property: "og:title", content: "Presence Studio — Custom Discord Rich Presence" },
       {
         property: "og:description",
         content:
@@ -502,7 +502,7 @@ function PresenceStudio() {
 
   return (
     <main
-      className="min-h-screen px-4 py-8 transition-[background-color] duration-500 sm:px-8 lg:px-12"
+      className="safe-area-shell min-h-screen px-4 py-8 transition-[background-color] duration-500 sm:px-8 lg:px-12"
       style={studioBackgroundStyle(draft.color)}
     >
       <div
@@ -514,7 +514,7 @@ function PresenceStudio() {
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
-              Zora Studio
+              Presence Studio
             </p>
             <h1 className="mt-2 text-3xl font-bold sm:text-4xl">Build your status</h1>
             <p className="mt-2 max-w-xl text-sm text-muted-foreground">

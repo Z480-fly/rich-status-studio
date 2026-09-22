@@ -76,14 +76,25 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Zora Studio" },
-      { name: "description", content: "Zora Studio — create a custom Discord Rich Presence: pick a preset, style the text and artwork, and show it on your profile." },
-      { name: "author", content: "Zora Studio" },
-      { property: "og:title", content: "Zora Studio" },
-      { property: "og:description", content: "Create a custom Discord Rich Presence with presets, artwork, and timers." },
+      {
+        name: "viewport",
+        content:
+          "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1",
+      },
+      { title: "Zora — Presence Studio" },
+      { name: "description", content: "Design and control your Discord Rich Presence from your iPhone." },
+      { name: "author", content: "Zora" },
+      { name: "theme-color", content: "#0b1019" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+      { name: "apple-mobile-web-app-title", content: "Zora" },
+      { name: "format-detection", content: "telephone=no" },
+      { property: "og:title", content: "Lovable App" },
+      { property: "og:description", content: "Lovable Generated Project" },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
@@ -97,6 +108,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=DM+Sans:wght@400;500;600&display=swap",
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/favicon.ico" },
     ],
 
   }),
