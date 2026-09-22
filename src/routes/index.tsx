@@ -44,7 +44,7 @@ import { ImagePicker } from "@/components/ImagePicker";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Presence Studio — Custom Discord Rich Presence" },
+      { title: "Zora Studio — Custom Discord Rich Presence" },
       {
         name: "description",
         content:
