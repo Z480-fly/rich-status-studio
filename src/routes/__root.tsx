@@ -77,14 +77,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "Zora Studio" },
+      { name: "description", content: "Zora Studio — create a custom Discord Rich Presence: pick a preset, style the text and artwork, and show it on your profile." },
+      { name: "author", content: "Zora Studio" },
+      { property: "og:title", content: "Zora Studio" },
+      { property: "og:description", content: "Create a custom Discord Rich Presence with presets, artwork, and timers." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
     ],
     links: [
       {
