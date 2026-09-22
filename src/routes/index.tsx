@@ -40,6 +40,7 @@ import {
 } from "@/lib/server-presence.functions";
 import { PUBLIC_SITE_ORIGIN } from "@/lib/site";
 import { ImagePicker } from "@/components/ImagePicker";
+import { ActivityBridgePanel } from "@/components/ActivityBridgePanel";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -680,6 +681,8 @@ function PresenceStudio() {
             </div>
           )}
         </section>
+
+        <ActivityBridgePanel />
 
         <section className="mt-8">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">

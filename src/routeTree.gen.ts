@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicActivityBridgeEventRouteImport } from './routes/api/public/activity-bridge/event'
 import { Route as ApiPublicDiscordCallbackRouteImport } from './routes/api/public/discord/callback'
 import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
 import { Route as ApiPublicPresenceSwatchColorRouteImport } from './routes/api/public/presence-swatch.$color'
@@ -21,6 +22,12 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicActivityBridgeEventRoute =
+  ApiPublicActivityBridgeEventRouteImport.update({
+    id: '/api/public/activity-bridge/event',
+    path: '/api/public/activity-bridge/event',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicDiscordCallbackRoute =
   ApiPublicDiscordCallbackRouteImport.update({
     id: '/api/public/discord/callback',
@@ -53,6 +60,7 @@ const ApiPublicWorkerPollRoute = ApiPublicWorkerPollRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
   '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
@@ -61,6 +69,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
   '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
@@ -70,6 +79,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
   '/api/public/presence-swatch/$color': typeof ApiPublicPresenceSwatchColorRoute
@@ -80,6 +90,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
     | '/api/public/presence-swatch/$color'
@@ -88,6 +99,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
     | '/api/public/presence-swatch/$color'
@@ -96,6 +108,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
     | '/api/public/presence-swatch/$color'
@@ -105,6 +118,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  ApiPublicActivityBridgeEventRoute: typeof ApiPublicActivityBridgeEventRoute
   ApiPublicDiscordCallbackRoute: typeof ApiPublicDiscordCallbackRoute
   ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
   ApiPublicPresenceSwatchColorRoute: typeof ApiPublicPresenceSwatchColorRoute
@@ -119,6 +133,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/activity-bridge/event': {
+      id: '/api/public/activity-bridge/event'
+      path: '/api/public/activity-bridge/event'
+      fullPath: '/api/public/activity-bridge/event'
+      preLoaderRoute: typeof ApiPublicActivityBridgeEventRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/discord/callback': {
@@ -161,6 +182,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  ApiPublicActivityBridgeEventRoute: ApiPublicActivityBridgeEventRoute,
   ApiPublicDiscordCallbackRoute: ApiPublicDiscordCallbackRoute,
   ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,
   ApiPublicPresenceSwatchColorRoute: ApiPublicPresenceSwatchColorRoute,
