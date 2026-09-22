@@ -159,9 +159,30 @@
 
 @layer base {
   body {
+    min-width: 320px;
+    min-height: 100dvh;
+    margin: 0;
+    overflow-x: hidden;
     font-family: var(--font-body);
     background-image: var(--surface-glow);
     background-attachment: fixed;
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  button,
+  a,
+  input,
+  textarea,
+  select {
+    touch-action: manipulation;
   }
 
   h1,
@@ -170,6 +191,11 @@
     font-family: var(--font-display);
     letter-spacing: -0.02em;
   }
+}
+
+.safe-area-shell {
+  padding-top: max(2rem, env(safe-area-inset-top));
+  padding-bottom: max(2rem, env(safe-area-inset-bottom));
 }
 
 @utility panel {
