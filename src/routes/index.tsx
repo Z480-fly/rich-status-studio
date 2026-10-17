@@ -87,6 +87,31 @@ function describeError(error: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Turns a raw OAuth failure reason into something a person can act on.
+ *
+ * Discord's OAuth edge sits behind Cloudflare, so when their origin DNS fails
+ * the browser arrives at our callback with a bare Cloudflare page text like
+ * "error code: 1016" instead of a real OAuth error — retrying usually fixes it.
+ */
+function humanizeLinkReason(reason: string | null): string {
+  const raw = (reason ?? "").trim();
+  const lower = raw.toLowerCase();
+  if (lower.includes("1016") || lower.includes("origin dns")) {
+    return "Discord's sign-in service hit a temporary network error (Cloudflare 1016). Try the Link button again — this usually clears on its own.";
+  }
+  if (lower.includes("invalid oauth2 redirect_uri") || lower.includes("redirect_uri")) {
+    return `Discord rejected the callback URL. The portal must list ${PUBLIC_SITE_ORIGIN}/api/public/discord/callback under OAuth2 → Redirects.`;
+  }
+  if (lower.includes("invalid oauth2 state")) {
+    return "The sign-in link expired (state mismatch). Press the Link button again for a fresh one.";
+  }
+  if (lower.includes("access_denied")) {
+    return "Authorization was declined on Discord's consent screen. Approve the requested permissions when prompted.";
+  }
+  return raw ? `Discord linking failed: ${raw}` : "Discord linking failed (unknown error).";
+}
+
 /** Human label for the worker states the heartbeat endpoint accepts. */
 function serverWorkerLabel(state: string): string {
   switch (state) {
@@ -166,7 +191,7 @@ function PresenceStudio() {
     } else {
       setStatus({
         kind: "error",
-        message: `Discord linking failed: ${params.get("reason") ?? "unknown error"}`,
+        message: humanizeLinkReason(params.get("reason")),
       });
     }
   }, [refreshServerPresence]);
