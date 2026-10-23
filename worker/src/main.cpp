@@ -45,6 +45,8 @@
 #include <utility>
 #include <vector>
 
+#include <sys/stat.h>
+
 #ifdef ZORA_HAVE_DISCORD_SDK
 // discordpp.h is a generated single-header wrapper. Its implementation must be
 // emitted in exactly one translation unit, as required by the SDK C++ guide.
@@ -1258,10 +1260,44 @@ class StandaloneRunner {
 }  // namespace
 
 int main(int argc, char** argv) {
-  (void)argc;
-  (void)argv;
   loadDotenv(".env");
   Config cfg = loadConfig();
+
+  // One-time Discord account link for standalone mode.
+  if (argc > 1 && std::string(argv[1]) == "link") {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    return linkCommand(cfg);
+  }
+
+  if (cfg.standalone) {
+    if (cfg.discordClientId.empty() || cfg.discordClientSecret.empty()) {
+      logLine("Standalone mode needs DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET. "
+              "See worker/README.md.");
+      return 1;
+    }
+    logLine("worker starting in STANDALONE mode; presence=" + cfg.presenceFile +
+            " tokens=" + cfg.tokensFile + " poll=" +
+            std::to_string(cfg.pollIntervalMs) + "ms");
+#ifdef ZORA_HAVE_DISCORD_SDK
+    logLine("Discord Social SDK present — real presence");
+#else
+    logLine("Discord Social SDK absent — dry-run mode");
+#endif
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    StandaloneRunner runner(std::move(cfg));
+    while (true) {
+#ifdef ZORA_HAVE_DISCORD_SDK
+      discordpp::RunCallbacks();
+#endif
+      try {
+        runner.tick();
+      } catch (const std::exception& e) {
+        logLine(std::string("standalone tick failed: ") + e.what());
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(cfg.pollIntervalMs));
+    }
+  }
+
   if (cfg.apiBase.empty() || cfg.secret.empty()) {
     logLine("ZORA_API_BASE and WORKER_SHARED_SECRET are required. See worker/README.md.");
     return 1;
