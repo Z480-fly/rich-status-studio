@@ -479,6 +479,15 @@ struct Config {
   std::string secret;        // WORKER_SHARED_SECRET
   std::string discordAppId;  // DISCORD_APP_ID (informational in dry-run mode)
   long long pollIntervalMs = 5000;
+  // Standalone mode (ZORA_STANDALONE=1): the worker talks to Discord directly
+  // and never contacts the Zora API. It owns the OAuth tokens (tokensFile)
+  // and reads the desired presence from a local JSON file (presenceFile).
+  bool standalone = false;
+  std::string discordClientId;      // DISCORD_CLIENT_ID
+  std::string discordClientSecret;  // DISCORD_CLIENT_SECRET
+  std::string redirectUri;          // DISCORD_REDIRECT_URI (default https://127.0.0.1)
+  std::string presenceFile;         // PRESENCE_FILE (default presence.json)
+  std::string tokensFile;           // TOKENS_FILE (default tokens.json)
 };
 
 Config loadConfig() {
@@ -489,6 +498,12 @@ Config loadConfig() {
   cfg.pollIntervalMs = std::atoll(envOr("POLL_INTERVAL_MS", "5000").c_str());
   if (cfg.pollIntervalMs <= 0) cfg.pollIntervalMs = 5000;
   while (!cfg.apiBase.empty() && cfg.apiBase.back() == '/') cfg.apiBase.pop_back();
+  cfg.standalone = envOr("ZORA_STANDALONE") == "1";
+  cfg.discordClientId = envOr("DISCORD_CLIENT_ID");
+  cfg.discordClientSecret = envOr("DISCORD_CLIENT_SECRET");
+  cfg.redirectUri = envOr("DISCORD_REDIRECT_URI", "https://127.0.0.1");
+  cfg.presenceFile = envOr("PRESENCE_FILE", "presence.json");
+  cfg.tokensFile = envOr("TOKENS_FILE", "tokens.json");
   return cfg;
 }
 
