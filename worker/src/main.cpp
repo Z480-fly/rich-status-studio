@@ -45,6 +45,8 @@
 #include <utility>
 #include <vector>
 
+#include <sys/stat.h>
+
 #ifdef ZORA_HAVE_DISCORD_SDK
 // discordpp.h is a generated single-header wrapper. Its implementation must be
 // emitted in exactly one translation unit, as required by the SDK C++ guide.
@@ -442,6 +444,86 @@ HttpResponse httpRequest(const std::string& url, const std::string& bearer,
   return out;
 }
 
+std::string urlEncode(const std::string& in) {
+  std::string out;
+  char buf[4];
+  for (unsigned char c : in) {
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      out.push_back((char)c);
+    } else {
+      std::snprintf(buf, sizeof(buf), "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
+std::string urlDecode(const std::string& in) {
+  std::string out;
+  for (size_t i = 0; i < in.size(); i++) {
+    if (in[i] == '%' && i + 2 < in.size()) {
+      auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+      };
+      int hi = hex(in[i + 1]), lo = hex(in[i + 2]);
+      if (hi >= 0 && lo >= 0) {
+        out.push_back((char)((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+    }
+    out.push_back(in[i] == '+' ? ' ' : in[i]);
+  }
+  return out;
+}
+
+// POST application/x-www-form-urlencoded, optionally with HTTP basic auth
+// (Discord's token endpoint expects client_id:client_secret that way).
+HttpResponse httpFormPost(const std::string& url, const std::string& formBody,
+                          const std::string& basicUser, const std::string& basicPass) {
+  HttpResponse out;
+  CURL* curl = curl_easy_init();
+  if (!curl) {
+    out.error = "curl init failed";
+    return out;
+  }
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, formBody.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)formBody.size());
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  if (!basicUser.empty()) {
+    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_BASIC);
+    std::string creds = basicUser + ":" + basicPass;
+    curl_easy_setopt(curl, CURLOPT_USERPWD, creds.c_str());
+  }
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out.body);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "zora-presence-worker/1.0");
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  CURLcode rc = curl_easy_perform(curl);
+  if (rc != CURLE_OK) {
+    out.error = curl_easy_strerror(rc);
+  } else {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &out.status);
+  }
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  return out;
+}
+
+// GET with a bearer token but no JSON body — for Discord's /users/@me.
+HttpResponse httpGetBearer(const std::string& url, const std::string& bearer) {
+  return httpRequest(url, bearer, "");
+}
+
 // ---------------------------------------------------------------------------
 // Configuration: process env first, then a .env file in the working directory.
 // ---------------------------------------------------------------------------
@@ -479,6 +561,15 @@ struct Config {
   std::string secret;        // WORKER_SHARED_SECRET
   std::string discordAppId;  // DISCORD_APP_ID (informational in dry-run mode)
   long long pollIntervalMs = 5000;
+  // Standalone mode (ZORA_STANDALONE=1): the worker talks to Discord directly
+  // and never contacts the Zora API. It owns the OAuth tokens (tokensFile)
+  // and reads the desired presence from a local JSON file (presenceFile).
+  bool standalone = false;
+  std::string discordClientId;      // DISCORD_CLIENT_ID
+  std::string discordClientSecret;  // DISCORD_CLIENT_SECRET
+  std::string redirectUri;          // DISCORD_REDIRECT_URI (default https://127.0.0.1)
+  std::string presenceFile;         // PRESENCE_FILE (default presence.json)
+  std::string tokensFile;           // TOKENS_FILE (default tokens.json)
 };
 
 Config loadConfig() {
@@ -489,6 +580,12 @@ Config loadConfig() {
   cfg.pollIntervalMs = std::atoll(envOr("POLL_INTERVAL_MS", "5000").c_str());
   if (cfg.pollIntervalMs <= 0) cfg.pollIntervalMs = 5000;
   while (!cfg.apiBase.empty() && cfg.apiBase.back() == '/') cfg.apiBase.pop_back();
+  cfg.standalone = envOr("ZORA_STANDALONE") == "1";
+  cfg.discordClientId = envOr("DISCORD_CLIENT_ID");
+  cfg.discordClientSecret = envOr("DISCORD_CLIENT_SECRET");
+  cfg.redirectUri = envOr("DISCORD_REDIRECT_URI", "https://127.0.0.1");
+  cfg.presenceFile = envOr("PRESENCE_FILE", "presence.json");
+  cfg.tokensFile = envOr("TOKENS_FILE", "tokens.json");
   return cfg;
 }
 
@@ -887,13 +984,320 @@ class Worker {
   std::map<std::string, SessionState> sessions_;
 };
 
+// ---------------------------------------------------------------------------
+// Standalone mode (ZORA_STANDALONE=1)
+//
+// The worker runs without the Zora web app entirely:
+//
+//   presence.json  — the desired presence, edited by hand or by a helper:
+//     { "desired_state": "running", "activity": { "type": 0, "details": "…",
+//       "state": "…", "timestamps": { "start": 1710000000000 },
+//       "assets": { "large_image": "https://…" }, "party": { "size": [3, 5] } } }
+//
+//   tokens.json — written once by `zora-presence-worker link` and then kept
+//   fresh by the worker itself (Discord rotates refresh tokens on every use,
+//   so the file is rewritten after each refresh).
+//
+// The loop re-reads presence.json every pass, so changing the file is enough
+// to change the live presence — no restart, no API, no Lovable.
+// ---------------------------------------------------------------------------
+
+constexpr const char* kDiscordApi = "https://discord.com/api/v10";
+constexpr const char* kStandaloneScopes = "identify sdk.social_layer_presence";
+
+struct StandaloneTokens {
+  std::string discordUserId;
+  std::string username;
+  std::string accessToken;
+  std::string refreshToken;
+  int64_t expiresAt = 0;  // unix seconds
+};
+
+std::string jsonGetString(const JValue& obj, const char* key) {
+  const JValue* v = obj.find(key);
+  return (v && v->type == JValue::Type::String) ? v->string : "";
+}
+
+int64_t jsonGetInt(const JValue& obj, const char* key) {
+  const JValue* v = obj.find(key);
+  return (v && v->type == JValue::Type::Number) ? (int64_t)std::llround(v->number) : 0;
+}
+
+bool loadTokens(const std::string& path, StandaloneTokens* out) {
+  std::ifstream file(path);
+  if (!file) return false;
+  std::string text((std::istreambuf_iterator<char>(file)),
+                   std::istreambuf_iterator<char>());
+  JValue root;
+  std::string err;
+  if (!JsonParser(text).parse(&root, &err)) {
+    logLine("[standalone] " + path + " is not valid JSON: " + err);
+    return false;
+  }
+  out->discordUserId = jsonGetString(root, "discord_user_id");
+  out->username = jsonGetString(root, "username");
+  out->accessToken = jsonGetString(root, "access_token");
+  out->refreshToken = jsonGetString(root, "refresh_token");
+  out->expiresAt = jsonGetInt(root, "expires_at");
+  return !out->refreshToken.empty();
+}
+
+bool saveTokens(const std::string& path, const StandaloneTokens& tokens) {
+  JValue root;
+  root.type = JValue::Type::Object;
+  auto putStr = [&root](const char* key, const std::string& value) {
+    root.object[key].type = JValue::Type::String;
+    root.object[key].string = value;
+  };
+  putStr("discord_user_id", tokens.discordUserId);
+  putStr("username", tokens.username);
+  putStr("access_token", tokens.accessToken);
+  putStr("refresh_token", tokens.refreshToken);
+  root.object["expires_at"].type = JValue::Type::Number;
+  root.object["expires_at"].number = (double)tokens.expiresAt;
+  root.object["expires_at"].isInt = true;
+  std::string json;
+  dumpValue(root, &json);
+  {
+    std::ofstream file(path, std::ios::trunc);
+    if (!file) return false;
+    file << json << "\n";
+  }
+  // Tokens are as sensitive as a password: owner-only.
+  chmod(path.c_str(), 0600);
+  return true;
+}
+
+// Exchanges or refreshes tokens at Discord's token endpoint. On success the
+// tokens object is updated in place; the caller persists it.
+bool discordTokenGrant(const Config& cfg, const std::string& formBody,
+                       StandaloneTokens* tokens, std::string* error) {
+  HttpResponse resp =
+      httpFormPost(std::string(kDiscordApi) + "/oauth2/token", formBody,
+                   cfg.discordClientId, cfg.discordClientSecret);
+  if (!resp.error.empty()) {
+    *error = "token request failed: " + resp.error;
+    return false;
+  }
+  JValue root;
+  std::string parseErr;
+  if (!JsonParser(resp.body).parse(&root, &parseErr)) {
+    *error = "token response was not JSON (HTTP " + std::to_string(resp.status) + ")";
+    return false;
+  }
+  if (resp.status < 200 || resp.status >= 300) {
+    *error = "Discord rejected the token request (HTTP " + std::to_string(resp.status) +
+             "): " + jsonGetString(root, "error_description") + jsonGetString(root, "error");
+    return false;
+  }
+  tokens->accessToken = jsonGetString(root, "access_token");
+  // Discord rotates the refresh token on every grant — keep the new one.
+  std::string newRefresh = jsonGetString(root, "refresh_token");
+  if (!newRefresh.empty()) tokens->refreshToken = newRefresh;
+  int64_t expiresIn = jsonGetInt(root, "expires_in");
+  tokens->expiresAt = (int64_t)std::time(nullptr) + (expiresIn > 0 ? expiresIn : 3600) - 60;
+  return !tokens->accessToken.empty();
+}
+
+bool refreshIfNeeded(const Config& cfg, StandaloneTokens* tokens, std::string* error) {
+  int64_t now = (int64_t)std::time(nullptr);
+  if (!tokens->accessToken.empty() && tokens->expiresAt - 120 > now) return true;
+  if (tokens->refreshToken.empty()) {
+    *error = "no refresh token — run `zora-presence-worker link` first";
+    return false;
+  }
+  std::string form = "grant_type=refresh_token&refresh_token=" + urlEncode(tokens->refreshToken);
+  if (!discordTokenGrant(cfg, form, tokens, error)) return false;
+  if (!saveTokens(cfg.tokensFile, *tokens)) {
+    logLine("[standalone] WARNING: could not save refreshed tokens to " + cfg.tokensFile);
+  }
+  logLine("[standalone] refreshed Discord access token");
+  return true;
+}
+
+/// One-time link: prints the Discord authorize URL, accepts the redirect URL
+/// (or bare code) the user lands on, exchanges it, and stores tokens.json.
+int linkCommand(const Config& cfg) {
+  if (cfg.discordClientId.empty() || cfg.discordClientSecret.empty()) {
+    std::cerr << "DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET must be set in .env first.\n";
+    return 1;
+  }
+  std::string state = std::to_string((unsigned long long)std::time(nullptr));
+  std::string url =
+      "https://discord.com/oauth2/authorize?client_id=" + urlEncode(cfg.discordClientId) +
+      "&response_type=code&redirect_uri=" + urlEncode(cfg.redirectUri) +
+      "&scope=" + urlEncode(kStandaloneScopes) + "&state=" + state;
+
+  std::cout << "\n1. Open this URL on your phone and tap Authorize:\n\n   " << url
+            << "\n\n2. Your browser will land on a page that does not load — that is"
+               " expected. Copy the FULL address from the address bar"
+               " (it contains ?code=...) and paste it here.\n\nPaste the URL or code: "
+            << std::flush;
+
+  std::string input;
+  if (!std::getline(std::cin, input) || trim(input).empty()) {
+    std::cerr << "no code entered\n";
+    return 1;
+  }
+  input = trim(input);
+  std::string code = input;
+  size_t codePos = input.find("code=");
+  if (codePos != std::string::npos) {
+    size_t end = input.find('&', codePos);
+    code = input.substr(codePos + 5, end == std::string::npos ? std::string::npos
+                                                              : end - codePos - 5);
+  }
+  code = urlDecode(code);
+
+  StandaloneTokens tokens;
+  std::string error;
+  std::string form = "grant_type=authorization_code&code=" + urlEncode(code) +
+                     "&redirect_uri=" + urlEncode(cfg.redirectUri);
+  if (!discordTokenGrant(cfg, form, &tokens, &error)) {
+    std::cerr << "Link failed: " << error << "\n";
+    return 1;
+  }
+
+  HttpResponse me = httpGetBearer(std::string(kDiscordApi) + "/users/@me", tokens.accessToken);
+  JValue meJson;
+  std::string parseErr;
+  if (me.error.empty() && me.status == 200 && JsonParser(me.body).parse(&meJson, &parseErr)) {
+    tokens.discordUserId = jsonGetString(meJson, "id");
+    tokens.username = jsonGetString(meJson, "username");
+  }
+  if (tokens.discordUserId.empty()) {
+    std::cerr << "Linked, but could not read your Discord user id. Try again.\n";
+    return 1;
+  }
+  if (!saveTokens(cfg.tokensFile, tokens)) {
+    std::cerr << "Could not write " << cfg.tokensFile << "\n";
+    return 1;
+  }
+  std::cout << "Linked as " << tokens.username << " (" << tokens.discordUserId
+            << "). Tokens saved to " << cfg.tokensFile
+            << " — the worker refreshes them by itself from now on.\n";
+  return 0;
+}
+
+/// Standalone loop: read presence.json, keep the token fresh, apply/clear.
+class StandaloneRunner {
+ public:
+  explicit StandaloneRunner(Config cfg) : cfg_(std::move(cfg)) {}
+
+  void tick() {
+    StandaloneTokens tokens;
+    if (!loadTokens(cfg_.tokensFile, &tokens)) {
+      if (!warnedNoTokens_) {
+        warnedNoTokens_ = true;
+        logLine("[standalone] no linked Discord account yet — run "
+                "`zora-presence-worker link` once");
+      }
+      return;
+    }
+    warnedNoTokens_ = false;
+
+    std::string error;
+    if (!refreshIfNeeded(cfg_, &tokens, &error)) {
+      logLine("[standalone] token refresh failed: " + error);
+      return;
+    }
+
+    // Re-read the desired presence every pass so edits apply without restart.
+    std::ifstream file(cfg_.presenceFile);
+    if (!file) {
+      if (!warnedNoPresence_) {
+        warnedNoPresence_ = true;
+        logLine("[standalone] " + cfg_.presenceFile +
+                " not found — create it to set a presence (see worker/README.md)");
+      }
+      return;
+    }
+    warnedNoPresence_ = false;
+    std::string text((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    JValue root;
+    std::string parseErr;
+    if (!JsonParser(text).parse(&root, &parseErr)) {
+      logLine("[standalone] " + cfg_.presenceFile + " is not valid JSON: " + parseErr);
+      return;
+    }
+
+    const bool running = jsonGetString(root, "desired_state") == "running";
+    const JValue* act = root.find("activity");
+    JValue activity = act ? *act : JValue{};
+    std::string activityJson;
+    dumpValue(activity, &activityJson);
+
+    if (running) {
+      if (activityJson != appliedJson_) {
+        std::string err;
+        if (pool_.apply(tokens.discordUserId, tokens.accessToken, activity, &err)) {
+          appliedJson_ = activityJson;
+          logLine("[standalone] presence applied: " + briefJson(activity));
+        } else {
+          logLine("[standalone] apply failed: " + err);
+        }
+      }
+    } else if (!appliedJson_.empty()) {
+      std::string err;
+      if (pool_.clear(tokens.discordUserId, tokens.accessToken, &err)) {
+        appliedJson_.clear();
+        logLine("[standalone] presence cleared");
+      } else {
+        logLine("[standalone] clear failed: " + err);
+      }
+    }
+  }
+
+ private:
+  Config cfg_;
+  DiscordPool pool_;
+  std::string appliedJson_;
+  bool warnedNoTokens_ = false;
+  bool warnedNoPresence_ = false;
+};
+
 }  // namespace
 
 int main(int argc, char** argv) {
-  (void)argc;
-  (void)argv;
   loadDotenv(".env");
   Config cfg = loadConfig();
+
+  // One-time Discord account link for standalone mode.
+  if (argc > 1 && std::string(argv[1]) == "link") {
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    return linkCommand(cfg);
+  }
+
+  if (cfg.standalone) {
+    if (cfg.discordClientId.empty() || cfg.discordClientSecret.empty()) {
+      logLine("Standalone mode needs DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET. "
+              "See worker/README.md.");
+      return 1;
+    }
+    logLine("worker starting in STANDALONE mode; presence=" + cfg.presenceFile +
+            " tokens=" + cfg.tokensFile + " poll=" +
+            std::to_string(cfg.pollIntervalMs) + "ms");
+#ifdef ZORA_HAVE_DISCORD_SDK
+    logLine("Discord Social SDK present — real presence");
+#else
+    logLine("Discord Social SDK absent — dry-run mode");
+#endif
+    curl_global_init(CURL_GLOBAL_DEFAULT);
+    StandaloneRunner runner(std::move(cfg));
+    while (true) {
+#ifdef ZORA_HAVE_DISCORD_SDK
+      discordpp::RunCallbacks();
+#endif
+      try {
+        runner.tick();
+      } catch (const std::exception& e) {
+        logLine(std::string("standalone tick failed: ") + e.what());
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(cfg.pollIntervalMs));
+    }
+  }
+
   if (cfg.apiBase.empty() || cfg.secret.empty()) {
     logLine("ZORA_API_BASE and WORKER_SHARED_SECRET are required. See worker/README.md.");
     return 1;

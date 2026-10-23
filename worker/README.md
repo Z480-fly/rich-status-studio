@@ -63,6 +63,39 @@ Copy `.env.example` to `.env`:
 | `DISCORD_APP_ID`       | your Discord application id                                        |
 | `POLL_INTERVAL_MS`     | default `5000`                                                     |
 
+## Standalone mode (no Zora app needed)
+
+With `ZORA_STANDALONE=1` the worker stops polling the Zora API and does the
+whole job itself: it keeps your Discord login in a local `tokens.json`,
+refreshes the access token on its own, and reads the presence you want from a
+local `presence.json`. The web app can be paused or gone — the worker doesn't
+care.
+
+Setup, once:
+
+1. In `.env` set `ZORA_STANDALONE=1`, `DISCORD_CLIENT_ID` and
+   `DISCORD_CLIENT_SECRET` (both from the Discord Developer Portal → your app →
+   OAuth2), and make sure `DISCORD_REDIRECT_URI` (default `https://127.0.0.1`)
+   is listed under OAuth2 → Redirects in the portal.
+2. Link your Discord account once:
+   ```bash
+   ./zora-presence-worker link
+   ```
+   It prints a Discord authorize URL. Open it on your phone, tap **Authorize**,
+   and when the browser lands on a page that doesn't load, copy the full
+   address (it contains `?code=...`) and paste it back. The worker exchanges
+   it and writes `tokens.json` (mode 0600).
+3. Copy `presence.example.json` to `presence.json` and edit the text/images.
+   `desired_state: "running"` applies the presence, `"stopped"` clears it.
+
+Then just start the worker. It re-reads `presence.json` every poll interval,
+so **editing the file changes your live presence within seconds** — no restart,
+no API, no Lovable. If Discord rotates or revokes the grant (you remove the
+app in Discord settings), run `link` again.
+
+Both modes use the same binary and the same Social SDK adapter; standalone only
+replaces where instructions and tokens come from.
+
 ## Build (native worker)
 
 1. Download the **Discord Social SDK for Linux** from the Discord Developer

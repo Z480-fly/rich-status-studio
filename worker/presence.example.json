@@ -1,0 +1,13 @@
+{
+  "desired_state": "running",
+  "activity": {
+    "type": 0,
+    "details": "🎵 Listening to Music",
+    "state": "on repeat",
+    "timestamps": { "start": 1710000000000 },
+    "assets": {
+      "large_image": "https://rich-status-studio.lovable.app/api/public/presence-swatch/7c3aed",
+      "large_text": "Zora Studio"
+    }
+  }
+}
