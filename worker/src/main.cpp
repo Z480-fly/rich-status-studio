@@ -442,6 +442,86 @@ HttpResponse httpRequest(const std::string& url, const std::string& bearer,
   return out;
 }
 
+std::string urlEncode(const std::string& in) {
+  std::string out;
+  char buf[4];
+  for (unsigned char c : in) {
+    if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+        (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == '~') {
+      out.push_back((char)c);
+    } else {
+      std::snprintf(buf, sizeof(buf), "%%%02X", c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
+std::string urlDecode(const std::string& in) {
+  std::string out;
+  for (size_t i = 0; i < in.size(); i++) {
+    if (in[i] == '%' && i + 2 < in.size()) {
+      auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+      };
+      int hi = hex(in[i + 1]), lo = hex(in[i + 2]);
+      if (hi >= 0 && lo >= 0) {
+        out.push_back((char)((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+    }
+    out.push_back(in[i] == '+' ? ' ' : in[i]);
+  }
+  return out;
+}
+
+// POST application/x-www-form-urlencoded, optionally with HTTP basic auth
+// (Discord's token endpoint expects client_id:client_secret that way).
+HttpResponse httpFormPost(const std::string& url, const std::string& formBody,
+                          const std::string& basicUser, const std::string& basicPass) {
+  HttpResponse out;
+  CURL* curl = curl_easy_init();
+  if (!curl) {
+    out.error = "curl init failed";
+    return out;
+  }
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/x-www-form-urlencoded");
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, formBody.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)formBody.size());
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  if (!basicUser.empty()) {
+    curl_easy_setopt(curl, CURLOPT_HTTPAUTH, (long)CURLAUTH_BASIC);
+    std::string creds = basicUser + ":" + basicPass;
+    curl_easy_setopt(curl, CURLOPT_USERPWD, creds.c_str());
+  }
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writeCallback);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &out.body);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_USERAGENT, "zora-presence-worker/1.0");
+  curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
+  CURLcode rc = curl_easy_perform(curl);
+  if (rc != CURLE_OK) {
+    out.error = curl_easy_strerror(rc);
+  } else {
+    curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &out.status);
+  }
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  return out;
+}
+
+// GET with a bearer token but no JSON body — for Discord's /users/@me.
+HttpResponse httpGetBearer(const std::string& url, const std::string& bearer) {
+  return httpRequest(url, bearer, "");
+}
+
 // ---------------------------------------------------------------------------
 // Configuration: process env first, then a .env file in the working directory.
 // ---------------------------------------------------------------------------
