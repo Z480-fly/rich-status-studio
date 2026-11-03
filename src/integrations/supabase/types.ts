@@ -266,6 +266,10 @@ export type Database = {
         Args: { p_body: string; p_recipient: string; p_sender: string }
         Returns: string
       }
+      chat_set_block: {
+        Args: { p_blocked: boolean; p_owner: string; p_peer: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
