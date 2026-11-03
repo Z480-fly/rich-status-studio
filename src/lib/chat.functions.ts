@@ -38,6 +38,17 @@ export const findChatUsers = createServerFn({ method: "POST" }).validator(chatSe
     .slice(0, 20);
 });
 
+export const listChatPeople = createServerFn({ method: "POST" }).validator(chatAuth).handler(async ({ data }) => {
+  const { requireChatIdentity, syncChatDirectory } = await import("./chat.server");
+  const me = await requireChatIdentity(data.accessToken);
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  await syncChatDirectory();
+  // Browsing beats guessing a name: everyone who linked Discord is listed here.
+  const { data: people, error } = await supabaseAdmin.from("chat_users").select("discord_user_id,discord_name,display_name").neq("discord_user_id", me.id).order("updated_at", { ascending: false }).limit(100);
+  if (error) throw new Error("Could not load people. Try again.");
+  return people ?? [];
+});
+
 export const getChatThread = createServerFn({ method: "POST" }).validator(chatPeer.extend({ before: z.string().datetime().optional() })).handler(async ({ data }) => {
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);

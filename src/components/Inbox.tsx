@@ -2,9 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Copy, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getChatInbox, getChatThread, findChatUsers, sendChatMessage, setChatBlock } from "@/lib/chat.functions";
+import { getChatInbox, getChatThread, findChatUsers, listChatPeople, sendChatMessage, setChatBlock } from "@/lib/chat.functions";
 import { getAccessToken, connectToDiscord, isInsideDiscord, subscribeConnection } from "@/lib/discord-client";
 import { getDiscordLinkUrl } from "@/lib/server-presence.functions";
 
@@ -25,10 +25,18 @@ export function Inbox() {
   const [busy, setBusy] = useState(false);
   const [older, setOlder] = useState<Message[]>([]);
   const [more, setMore] = useState(true);
+  const [copied, setCopied] = useState(false);
+  // A shared invite link (?to=discord_id) opens a conversation without needing search.
+  const [inviteId] = useState(() => {
+    if (typeof window === "undefined") return undefined;
+    const value = new URLSearchParams(window.location.search).get("to");
+    return value && /^\d{1,30}$/.test(value) ? value : undefined;
+  });
   const bottom = useRef<HTMLDivElement>(null);
   const inboxFn = useServerFn(getChatInbox);
   const threadFn = useServerFn(getChatThread);
   const searchFn = useServerFn(findChatUsers);
+  const peopleFn = useServerFn(listChatPeople);
   const sendFn = useServerFn(sendChatMessage);
   const blockFn = useServerFn(setChatBlock);
   const linkFn = useServerFn(getDiscordLinkUrl);
@@ -39,11 +47,32 @@ export function Inbox() {
     return () => { off(); document.removeEventListener("visibilitychange", update); };
   }, []);
   const inbox = useQuery({ queryKey: ["chat", "inbox", token], queryFn: () => inboxFn({ data: { accessToken: token } }), refetchInterval: visible ? 8000 : false, retry: false });
+  const people = useQuery({ queryKey: ["chat", "people", token], queryFn: () => peopleFn({ data: { accessToken: token } }), enabled: searching && Boolean(inbox.data?.me), staleTime: 30000, retry: false });
   const thread = useQuery({ queryKey: ["chat", "thread", peer?.discord_user_id, token], queryFn: () => threadFn({ data: { accessToken: token, peerId: peer?.discord_user_id ?? "0" } }), enabled: Boolean(peer && inbox.data?.me), refetchInterval: visible ? 5000 : false, retry: false });
   useEffect(() => { bottom.current?.scrollIntoView({ block: "nearest" }); }, [peer?.discord_user_id, thread.data?.messages.at(-1)?.id]);
   useEffect(() => { if (thread.data) void cache.invalidateQueries({ queryKey: ["chat", "inbox"] }); }, [thread.data, cache]);
   const choose = (person: Peer) => { setPeer(person); setSearching(false); setError(""); setText(""); setOlder([]); setMore(true); };
   const fail = (value: unknown) => setError(value instanceof Error ? value.message : "Something went wrong. Try again.");
+  const inviteLink = (id: string) => `${typeof window === "undefined" ? "" : window.location.origin}/inbox?to=${id}`;
+  const copyInvite = async (id: string) => {
+    try {
+      await navigator.clipboard.writeText(inviteLink(id));
+      setCopied(true);
+    } catch { setError("Could not copy the link. Long-press it in the address bar of a conversation instead."); }
+  };
+  useEffect(() => { if (!copied) return; const timer = window.setTimeout(() => setCopied(false), 2500); return () => window.clearTimeout(timer); }, [copied]);
+  useEffect(() => {
+    if (!inviteId || peer || !inbox.data?.me) return;
+    if (inviteId === inbox.data.me.id) { setError("That is your own invite link — send it to the other person instead."); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const page = await threadFn({ data: { accessToken: token, peerId: inviteId } });
+        if (!cancelled) choose(page.peer);
+      } catch (value) { if (!cancelled) fail(value); }
+    })();
+    return () => { cancelled = true; };
+  }, [inviteId, token, peer, inbox.data?.me?.id]);
   const connect = async () => {
     setBusy(true); setError("");
     try {
@@ -89,10 +118,21 @@ export function Inbox() {
               <form className="mt-5 flex gap-2" onSubmit={async (event) => { event.preventDefault(); setBusy(true); setError(""); try { setResults(await searchFn({ data: { accessToken: token, query: query.replace(/^@/, "") } })); } catch (value) { fail(value); } finally { setBusy(false); } }}>
                 <input aria-label="Discord name" className="field min-w-0 focus:field-focus" placeholder="Discord name or @username" value={query} maxLength={80} onChange={(event) => { setQuery(event.target.value); setResults(null); }} /><Button size="icon" className="size-11 shrink-0" aria-label="Search people" disabled={busy || query.replace(/^@/, "").trim().length < 2}><Search /></Button>
               </form>
-              {results?.length === 0 && <p className="mt-6 text-sm text-muted-foreground">No Zora users found with that name. People appear here once they have linked Discord in Zora.</p>}
+              {results?.length === 0 && <p className="mt-6 text-sm text-muted-foreground">No Zora users found with that name. Pick someone from the list below instead.</p>}
+              {results === null && <div className="mt-6"><h3 className="text-xs font-semibold uppercase text-muted-foreground">People on Zora</h3>
+                {people.isPending ? <p className="mt-3 text-sm text-muted-foreground">Loading people…</p> : people.error ? <p role="alert" className="mt-3 text-sm text-destructive">{people.error.message}</p> : !people.data?.length ? <p className="mt-3 text-sm text-muted-foreground">Nobody else has linked Discord yet. Share your invite link below.</p> : people.data.map((person) => <Button key={person.discord_user_id} variant="ghost" className="mt-2 h-auto w-full justify-between py-3 text-left" onClick={() => choose(person)}>
+                  <span className="flex min-w-0 items-center gap-3"><span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-secondary font-display text-primary">{person.display_name.slice(0,1).toUpperCase()}</span><span className="min-w-0"><span className="block truncate font-semibold">{person.display_name}</span><span className="block truncate text-xs text-muted-foreground">@{person.discord_name}</span></span></span><MessageCircle />
+                </Button>)}
+              </div>}
+              <div className="mt-8 rounded-lg border border-border p-4">
+                <p className="text-sm font-semibold">Still can’t find someone?</p>
+                <p className="mt-1 text-sm text-muted-foreground">Send them your invite link in Discord. Opening it starts a private conversation with you, no searching needed.</p>
+                <Button variant="outline" className="mt-3" disabled={!inbox.data.me} onClick={() => void copyInvite(inbox.data.me!.id)}>{copied ? <Check /> : <Copy />}{copied ? "Link copied" : "Copy my invite link"}</Button>
+                <p className="mt-2 break-all text-xs text-muted-foreground">{inviteLink(inbox.data.me.id)}</p>
+              </div>
               {results?.map((person) => <Button key={person.discord_user_id} variant="ghost" className="mt-3 h-auto w-full justify-between py-4 text-left" onClick={() => choose(person)}><span className="min-w-0"><span className="block truncate font-semibold">{person.display_name}</span><span className="block truncate text-xs text-muted-foreground">@{person.discord_name} · {person.discord_user_id}</span></span><MessageCircle /></Button>)}
             </div> : peer ? <>
-              <div className="flex min-h-20 items-center gap-3 border-b border-border px-4"><Button variant="ghost" size="icon" aria-label="Back to inbox" className="md:hidden" onClick={() => setPeer(null)}><ArrowLeft /></Button><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{peer.display_name}</h2><p className="truncate text-xs text-muted-foreground">@{peer.discord_name}</p></div><Button variant="ghost" size="icon" title={thread.data?.blockedByMe ? "Unblock user" : "Block user"} aria-label={thread.data?.blockedByMe ? "Unblock user" : "Block user"} disabled={busy || !thread.data} onClick={async () => { setBusy(true); try { await blockFn({ data: { accessToken: token, peerId: peer.discord_user_id, blocked: !thread.data?.blockedByMe } }); await thread.refetch(); } catch (value) { fail(value); } finally { setBusy(false); } }}>{thread.data?.blockedByMe ? <ShieldCheck /> : <ShieldBan />}</Button></div>
+              <div className="flex min-h-20 items-center gap-3 border-b border-border px-4"><Button variant="ghost" size="icon" aria-label="Back to inbox" className="md:hidden" onClick={() => setPeer(null)}><ArrowLeft /></Button><div className="min-w-0 flex-1"><h2 className="truncate font-semibold">{peer.display_name}</h2><p className="truncate text-xs text-muted-foreground">@{peer.discord_name}</p></div><Button variant="ghost" size="icon" title={copied ? "Link copied" : "Copy my invite link"} aria-label="Copy my invite link" onClick={() => void copyInvite(inbox.data.me!.id)}>{copied ? <Check /> : <Copy />}</Button><Button variant="ghost" size="icon" title={thread.data?.blockedByMe ? "Unblock user" : "Block user"} aria-label={thread.data?.blockedByMe ? "Unblock user" : "Block user"} disabled={busy || !thread.data} onClick={async () => { setBusy(true); try { await blockFn({ data: { accessToken: token, peerId: peer.discord_user_id, blocked: !thread.data?.blockedByMe } }); await thread.refetch(); } catch (value) { fail(value); } finally { setBusy(false); } }}>{thread.data?.blockedByMe ? <ShieldCheck /> : <ShieldBan />}</Button></div>
               <div className="h-[min(52dvh,600px)] min-h-64 overflow-y-auto px-4 py-5 sm:px-6" aria-label="Messages">
                 {thread.isPending && <p className="text-sm text-muted-foreground">Loading messages…</p>}
                 {thread.error && <p role="alert" className="text-sm text-destructive">{thread.error.message}<Button variant="ghost" onClick={() => void thread.refetch()}>Retry</Button></p>}
