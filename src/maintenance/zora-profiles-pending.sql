@@ -1,0 +1,12 @@
+--
+-- Reminder: the Zora profiles migration is not applied automatically.
+-- Until it is, /profile shows "Profiles storage is still being set up" and
+-- /u/<handle> cannot load anything (the server function reports a missing table).
+--
+-- Apply with:  supabase db push
+-- Or paste supabase/migrations/20261103030000_zora_profiles.sql into the
+-- Supabase dashboard SQL editor. It is written to be safe to run twice.
+--
+-- The table depends on public.discord_accounts(discord_user_id), which already
+-- exists in the connected project.
+--

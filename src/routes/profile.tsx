@@ -12,6 +12,7 @@ import {
   Loader2,
   Palette,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -86,7 +87,7 @@ function ProfileBuilder() {
   });
 
   useEffect(() => {
-    if (!mine.data || initialized.current) return;
+    if (!mine.data?.profile || initialized.current) return;
     initialized.current = true;
     setDraft(mine.data.profile);
   }, [mine.data]);
@@ -174,8 +175,11 @@ function ProfileBuilder() {
     }
   };
 
-  const needsLink = mine.isError;
-  const loading = mine.isPending || (!draft && !needsLink);
+  // A failed request is not the same as an unlinked account: only a null viewer means "link".
+  const needsLink = mine.data?.viewer === null;
+  const failed = mine.isError;
+  const setupPending = failed && /profiles storage is not set up/i.test(mine.error?.message ?? "");
+  const loading = mine.isPending || (!draft && !needsLink && !failed);
 
   return (
     <main className="safe-area-shell mx-auto min-h-screen max-w-7xl px-4 sm:px-8">
@@ -214,7 +218,26 @@ function ProfileBuilder() {
         <p role="status" className={`mb-4 text-sm ${status.kind === "error" ? "text-destructive" : "text-primary"}`}>{status.message}</p>
       )}
 
-      {needsLink ? (
+      {failed ? (
+        <div className={`panel flex flex-col items-center gap-4 p-10 text-center ${setupPending ? "border-amber-500/40 bg-amber-500/5" : ""}`}>
+          <Palette className={`size-10 ${setupPending ? "text-amber-400" : "text-primary"}`} />
+          <h2 className="text-xl font-semibold">
+            {setupPending ? "Profiles storage is still being set up" : "Couldn't open your profile"}
+          </h2>
+          <p className="max-w-md text-sm text-muted-foreground">
+            {setupPending
+              ? "Your Discord account is linked. The builder only needs the profiles table created in Supabase — the pending migration hasn't been applied yet."
+              : "Your Discord account is linked, but loading the profile failed. Try again in a moment."}
+          </p>
+          <p className="max-w-md break-words text-xs text-muted-foreground">{mine.error?.message}</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={() => void mine.refetch()} disabled={mine.isFetching}>
+              {mine.isFetching ? <Loader2 className="animate-spin" /> : <RefreshCw />}Try again
+            </Button>
+            <Button variant="ghost" onClick={() => void connect()}>Re-link Discord</Button>
+          </div>
+        </div>
+      ) : needsLink ? (
         <div className="panel flex flex-col items-center gap-4 p-10 text-center">
           <Palette className="size-10 text-primary" />
           <h2 className="text-xl font-semibold">Link Discord to build your profile</h2>
@@ -222,7 +245,6 @@ function ProfileBuilder() {
             Your Discord account is your Zora identity — it names your profile and keeps the link yours.
           </p>
           <Button onClick={() => void connect()}>Link Discord account</Button>
-          {mine.error && <p className="max-w-sm text-xs text-muted-foreground">{mine.error.message}</p>}
         </div>
       ) : loading ? (
         <p className="py-20 text-center text-muted-foreground">Opening your builder…</p>
@@ -431,7 +453,7 @@ function ProfileBuilder() {
       ) : (
         <div className="panel p-8 text-center text-sm text-muted-foreground">
           <p>Starting a fresh profile…</p>
-          <Button className="mt-3" variant="outline" onClick={() => setDraft(emptyProfile(mine.data?.viewer.name ?? "Zora user"))}>Start over</Button>
+          <Button className="mt-3" variant="outline" onClick={() => setDraft(emptyProfile(mine.data?.viewer?.name ?? "Zora user"))}>Start over</Button>
         </div>
       )}
     </main>

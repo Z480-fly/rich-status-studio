@@ -78,12 +78,20 @@ function PublicProfilePage() {
         <div className="flex flex-1 items-center justify-center">
           <p className="text-sm text-muted-foreground">Opening @{handle}…</p>
         </div>
+      ) : query.isError ? (
+        <div className="flex flex-1 items-center justify-center px-4">
+          <div className="panel max-w-md p-8 text-center">
+            <h1 className="text-xl font-semibold">Could not open this profile</h1>
+            <p className="mt-2 break-words text-sm text-muted-foreground">{query.error.message}</p>
+            <Button className="mt-4" variant="outline" onClick={() => void query.refetch()}>Try again</Button>
+          </div>
+        </div>
       ) : (
         <div className="flex flex-1 items-center justify-center px-4">
           <div className="panel max-w-md p-8 text-center">
             <h1 className="text-xl font-semibold">This profile isn&apos;t available</h1>
             <p className="mt-2 text-sm text-muted-foreground">
-              {query.error?.message ?? `Nothing is published at /u/${handle} yet — the handle may be wrong or the profile may be private.`}
+              Nothing is published at /u/{handle} yet — the handle may be wrong or the profile may be private.
             </p>
             <Button className="mt-4" asChild><Link to="/profile">Build your own profile</Link></Button>
           </div>
