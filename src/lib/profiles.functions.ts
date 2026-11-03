@@ -20,14 +20,36 @@ function accountInput(input: unknown): { accessToken?: string } {
   return typeof data?.accessToken === "string" && data.accessToken ? { accessToken: data.accessToken } : {};
 }
 
+/** Only used to tell "you are not linked" apart from "something broke". */
+class NotLinkedError extends Error {}
+
+/**
+ * Turn a PostgREST failure into something the builder can act on. A missing table
+ * is a setup problem (pending migration), not something retrying will fix, so it
+ * gets its own wording and is never mistaken for an unlinked account.
+ */
+function databaseError(action: string, error: { code?: string; message?: string } | null): Error {
+  const missingTable =
+    error?.code === "42P01" ||
+    error?.code === "PGRST205" ||
+    /does not exist|could not find the table|schema cache/i.test(error?.message ?? "");
+  if (missingTable) {
+    return new Error(
+      `Profiles storage is not set up yet: the "profiles" table is missing. Apply supabase/migrations/20261103030000_zora_profiles.sql and reload.`,
+    );
+  }
+  const detail = [error?.code, error?.message].filter(Boolean).join(" ");
+  return new Error(detail ? `${action} (${detail})` : action);
+}
+
 async function viewer(accessToken?: string): Promise<{ id: string; name: string }> {
   if (accessToken) {
     const res = await fetch("https://discord.com/api/v10/users/@me", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!res.ok) throw new Error("Your Discord connection expired. Connect again.");
+    if (!res.ok) throw new NotLinkedError("Your Discord connection expired. Connect again.");
     const user = (await res.json()) as { id?: string; username?: string; global_name?: string };
-    if (!user.id) throw new Error("Discord did not identify you.");
+    if (!user.id) throw new NotLinkedError("Discord did not identify you.");
     return { id: user.id, name: user.global_name || user.username || "Zora user" };
   }
 
@@ -36,7 +58,7 @@ async function viewer(accessToken?: string): Promise<{ id: string; name: string 
     import("./discord-oauth.server"),
   ]);
   const id = await sessionUser(readSessionCookie(getRequestHeader("cookie")));
-  if (!id) throw new Error("Link your Discord account to build your profile.");
+  if (!id) throw new NotLinkedError("Link your Discord account to build your profile.");
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { data } = await supabaseAdmin
     .from("discord_accounts")
@@ -73,22 +95,29 @@ function rowToProfile(row: ProfileRow, fallbackName: string): ProfileDraft {
 }
 
 export interface MyProfile {
-  viewer: { id: string; name: string };
-  profile: ProfileDraft;
+  /** null means "this browser has no linked Discord account yet", never an error. */
+  viewer: { id: string; name: string } | null;
+  profile: ProfileDraft | null;
   saved: boolean;
 }
 
 export const getMyProfile = createServerFn({ method: "POST" })
   .validator(accountInput)
   .handler(async ({ data }): Promise<MyProfile> => {
-    const me = await viewer(data.accessToken);
+    let me: { id: string; name: string };
+    try {
+      me = await viewer(data.accessToken);
+    } catch (error) {
+      if (error instanceof NotLinkedError) return { viewer: null, profile: null, saved: false };
+      throw error;
+    }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { data: row, error } = await supabaseAdmin
       .from("profiles")
       .select("handle,display_name,tagline,theme,sections,published")
       .eq("discord_user_id", me.id)
       .maybeSingle();
-    if (error) throw new Error("Could not load your profile. Try again.");
+    if (error) throw databaseError("Could not load your profile.", error);
     const profile = row ? rowToProfile(row, me.name) : { ...emptyProfile(me.name), handle: slugify(me.name) };
     return { viewer: { id: me.id, name: me.name }, profile, saved: Boolean(row) };
   });
@@ -122,7 +151,7 @@ export const saveMyProfile = createServerFn({ method: "POST" })
     if (error) {
       if (error.code === "23505") throw new Error("That handle is taken — pick another one.");
       if (error.code === "23503") throw new Error("Link your Discord account before saving a profile.");
-      throw new Error("Could not save your profile. Try again.");
+      throw databaseError("Could not save your profile.", error);
     }
     return { profile: rowToProfile(row, me.name) };
   });
@@ -141,7 +170,7 @@ export const getPublicProfile = createServerFn({ method: "POST" })
       .select("discord_user_id,handle,display_name,tagline,theme,sections,published,updated_at")
       .eq("handle", data.handle)
       .maybeSingle();
-    if (error) throw new Error("Could not load that profile. Try again.");
+    if (error) throw databaseError("Could not load that profile.", error);
     if (!row || !row.published) return { profile: null };
     const draft = rowToProfile(row, row.display_name);
     return {
