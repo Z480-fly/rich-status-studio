@@ -43,6 +43,99 @@ export type Database = {
           },
         ]
       }
+      chat_blocks: {
+        Row: {
+          blocked_id: string
+          owner_id: string
+        }
+        Insert: {
+          blocked_id: string
+          owner_id: string
+        }
+        Update: {
+          blocked_id?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_blocks_blocked_id_fkey"
+            columns: ["blocked_id"]
+            isOneToOne: false
+            referencedRelation: "chat_users"
+            referencedColumns: ["discord_user_id"]
+          },
+          {
+            foreignKeyName: "chat_blocks_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "chat_users"
+            referencedColumns: ["discord_user_id"]
+          },
+        ]
+      }
+      chat_messages: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          read_at: string | null
+          recipient_id: string
+          sender_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          recipient_id: string
+          sender_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          recipient_id?: string
+          sender_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "chat_users"
+            referencedColumns: ["discord_user_id"]
+          },
+          {
+            foreignKeyName: "chat_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "chat_users"
+            referencedColumns: ["discord_user_id"]
+          },
+        ]
+      }
+      chat_users: {
+        Row: {
+          discord_name: string
+          discord_user_id: string
+          display_name: string
+          updated_at: string
+        }
+        Insert: {
+          discord_name: string
+          discord_user_id: string
+          display_name: string
+          updated_at?: string
+        }
+        Update: {
+          discord_name?: string
+          discord_user_id?: string
+          display_name?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       discord_accounts: {
         Row: {
           access_token: string
@@ -158,7 +251,21 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      chat_inbox: {
+        Args: { p_user: string }
+        Returns: {
+          body: string
+          created_at: string
+          discord_name: string
+          display_name: string
+          peer_id: string
+          unread: number
+        }[]
+      }
+      chat_send: {
+        Args: { p_body: string; p_recipient: string; p_sender: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
