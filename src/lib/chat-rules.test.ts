@@ -1,23 +1,24 @@
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "node:test";
+import { strict as assert } from "node:assert";
 import { chatSend, chatSearch, isParticipant } from "./chat-rules";
 
 describe("private Zora messaging", () => {
   it("allows only sender and recipient to receive a message", () => {
     const message = { sender_id: "123", recipient_id: "456" };
-    expect(isParticipant("123", message)).toBe(true);
-    expect(isParticipant("456", message)).toBe(true);
-    expect(isParticipant("789", message)).toBe(false);
+    assert.equal(isParticipant("123", message), true);
+    assert.equal(isParticipant("456", message), true);
+    assert.equal(isParticipant("789", message), false);
   });
   it("rejects blank messages and messages over 2000 characters", () => {
-    expect(chatSend.safeParse({ peerId: "123", body: "   " }).success).toBe(false);
-    expect(chatSend.safeParse({ peerId: "123", body: "x".repeat(2000) }).success).toBe(true);
-    expect(chatSend.safeParse({ peerId: "123", body: "x".repeat(2001) }).success).toBe(false);
+    assert.equal(chatSend.safeParse({ peerId: "123", body: "   " }).success, false);
+    assert.equal(chatSend.safeParse({ peerId: "123", body: "x".repeat(2000) }).success, true);
+    assert.equal(chatSend.safeParse({ peerId: "123", body: "x".repeat(2001) }).success, false);
   });
   it("rejects non-Discord recipient IDs", () => {
-    expect(chatSend.safeParse({ peerId: "123),sender_id.neq.0", body: "hello" }).success).toBe(false);
+    assert.equal(chatSend.safeParse({ peerId: "123),sender_id.neq.0", body: "hello" }).success, false);
   });
   it("requires at least two characters to search people", () => {
-    expect(chatSearch.safeParse({ query: "a" }).success).toBe(false);
-    expect(chatSearch.safeParse({ query: "ab" }).success).toBe(true);
+    assert.equal(chatSearch.safeParse({ query: "a" }).success, false);
+    assert.equal(chatSearch.safeParse({ query: "ab" }).success, true);
   });
 });

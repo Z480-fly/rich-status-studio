@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { chatAuth, chatSearch, chatPeer, chatSend, isParticipant } from "./chat-rules";
 
-export const getChatInbox = createServerFn({ method: "POST" }).inputValidator(chatAuth).handler(async ({ data }) => {
+export const getChatInbox = createServerFn({ method: "POST" }).validator(chatAuth).handler(async ({ data }) => {
   const { chatIdentity } = await import("./chat.server");
   const me = await chatIdentity(data.accessToken);
   if (!me) return { me: null, conversations: [] };
@@ -12,7 +12,7 @@ export const getChatInbox = createServerFn({ method: "POST" }).inputValidator(ch
   return { me, conversations: conversations ?? [] };
 });
 
-export const findChatUsers = createServerFn({ method: "POST" }).inputValidator(chatSearch).handler(async ({ data }) => {
+export const findChatUsers = createServerFn({ method: "POST" }).validator(chatSearch).handler(async ({ data }) => {
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -22,7 +22,7 @@ export const findChatUsers = createServerFn({ method: "POST" }).inputValidator(c
   return users ?? [];
 });
 
-export const getChatThread = createServerFn({ method: "POST" }).inputValidator(chatPeer.extend({ before: z.string().datetime().optional() })).handler(async ({ data }) => {
+export const getChatThread = createServerFn({ method: "POST" }).validator(chatPeer.extend({ before: z.string().datetime().optional() })).handler(async ({ data }) => {
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
@@ -44,7 +44,7 @@ export const getChatThread = createServerFn({ method: "POST" }).inputValidator(c
   return { me, peer, messages: safe.reverse(), hasMore: safe.length === 50, blocked: Boolean(blocks?.length), blockedByMe: Boolean(blocks?.some((block) => block.owner_id === me.id)) };
 });
 
-export const sendChatMessage = createServerFn({ method: "POST" }).inputValidator(chatSend).handler(async ({ data }) => {
+export const sendChatMessage = createServerFn({ method: "POST" }).validator(chatSend).handler(async ({ data }) => {
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   if (me.id === data.peerId) throw new Error("Choose another Zora user.");
@@ -58,7 +58,7 @@ export const sendChatMessage = createServerFn({ method: "POST" }).inputValidator
   return { ok: true };
 });
 
-export const setChatBlock = createServerFn({ method: "POST" }).inputValidator(chatPeer.extend({ blocked: z.boolean() })).handler(async ({ data }) => {
+export const setChatBlock = createServerFn({ method: "POST" }).validator(chatPeer.extend({ blocked: z.boolean() })).handler(async ({ data }) => {
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   if (me.id === data.peerId) throw new Error("Choose another Zora user.");
