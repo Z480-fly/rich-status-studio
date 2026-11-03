@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1793667321712,
+      "tag": "0000_zora_private_inbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1793667371505,
+      "tag": "0001_chat_atomic_blocking",
+      "breakpoints": true
+    }
+  ]
+}

@@ -8,3 +8,6 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- Inbox identity is verified server-side using the existing Discord OAuth cookie or Embedded SDK access token; service-only chat tables must never be queried directly from the browser, to keep messages private.
+- Inbox uses its own /inbox route with visibility-aware polling; preserve the creator at / and never send in-app messages through Discord DMs.

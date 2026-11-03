@@ -1,4 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { MessageCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ACTIVITY_TYPES,
@@ -549,6 +551,7 @@ function PresenceStudio() {
           </div>
 
           <div className="flex items-center gap-3">
+            <Button variant="outline" asChild><Link to="/inbox"><MessageCircle />Inbox</Link></Button>
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
                 pill.tone === "warn"
