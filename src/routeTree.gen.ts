@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as InboxRouteImport } from './routes/inbox'
 import { Route as ApiPublicActivityBridgeEventRouteImport } from './routes/api/public/activity-bridge/event'
 import { Route as ApiPublicDiscordCallbackRouteImport } from './routes/api/public/discord/callback'
 import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
@@ -20,6 +21,11 @@ import { Route as ApiPublicWorkerPollRouteImport } from './routes/api/public/wor
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InboxRoute = InboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicActivityBridgeEventRoute =
@@ -60,6 +66,7 @@ const ApiPublicWorkerPollRoute = ApiPublicWorkerPollRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/inbox': typeof InboxRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -69,6 +76,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/inbox': typeof InboxRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -79,6 +87,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/inbox': typeof InboxRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -90,6 +99,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/inbox'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -99,6 +109,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/inbox'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -108,6 +119,7 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/inbox'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -118,6 +130,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  InboxRoute: typeof InboxRoute
   ApiPublicActivityBridgeEventRoute: typeof ApiPublicActivityBridgeEventRoute
   ApiPublicDiscordCallbackRoute: typeof ApiPublicDiscordCallbackRoute
   ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
@@ -133,6 +146,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/inbox': {
+      id: '/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof InboxRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/activity-bridge/event': {
@@ -182,6 +202,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  InboxRoute: InboxRoute,
   ApiPublicActivityBridgeEventRoute: ApiPublicActivityBridgeEventRoute,
   ApiPublicDiscordCallbackRoute: ApiPublicDiscordCallbackRoute,
   ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,
