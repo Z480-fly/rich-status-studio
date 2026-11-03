@@ -11,6 +11,7 @@
  *   ZORA_API_BASE         e.g. https://rich-status-studio.lovable.app
  *   WORKER_SHARED_SECRET  same value as the server secret
  *   POLL_INTERVAL_MS      default 5000
+ *   PRESENCE_REASSERT_MS  default 600000 (0 disables the periodic re-assert)
  *   HARNESS_FAIL_DISCORD  "1" makes the stubbed Discord calls throw
  *
  * Run:  node worker/harness/worker.mjs
@@ -41,9 +42,19 @@ function tailToken(token) {
 export function stubDiscord({ fail = false, log = console } = {}) {
   return {
     calls: [],
+    /** The SDK session behind a published presence; Discord drops it sometimes. */
+    connected: true,
+    isReady() {
+      return this.connected;
+    },
+    /** Simulates the SDK session dying (expired token, stale gateway). */
+    dropConnection() {
+      this.connected = false;
+    },
     async apply(accessToken, activity) {
       this.calls.push({ op: "apply", token: accessToken, activity });
       if (fail) throw new Error("stubbed Discord failure");
+      this.connected = true; // applying re-establishes the session
       log.info?.(
         `[discord] apply token=${tailToken(accessToken)} activity=${JSON.stringify(activity)}`,
       );
@@ -60,8 +71,11 @@ export function stubDiscord({ fail = false, log = console } = {}) {
  * Builds one stateful reconcile pass against the Zora API.
  *
  * Per-user state machine (identical to worker/src/main.cpp):
- *  - desired "running": apply the activity when the revision changed or the
- *    last apply did not stick (error/cleared); otherwise heartbeat as running.
+ *  - desired "running": apply the activity when the revision changed, the
+ *    last apply did not stick (error/cleared), the Discord session behind it
+ *    died, or the applied presence is older than `reassertMs` (Discord forgets
+ *    a presence once its session goes away, so the worker heals itself rather
+ *    than waiting to be reset from the phone); otherwise heartbeat as running.
  *  - desired "stopped": clear once if we had something applied; heartbeat
  *    cleared; never re-apply until the server bumps the revision again.
  *  - a heartbeat is sent every pass for every session so the phone sees fresh
@@ -73,6 +87,8 @@ export function createWorker({
   fetchImpl = fetch,
   discord = stubDiscord(),
   log = console,
+  reassertMs = 600_000,
+  now = Date.now,
 }) {
   if (!apiBase) throw new Error("ZORA_API_BASE is required");
   if (!secret) throw new Error("WORKER_SHARED_SECRET is required");
@@ -113,6 +129,7 @@ export function createWorker({
       revision: -1,
       desiredState: "",
       appliedActivityJson: "",
+      lastAppliedAt: 0,
     };
 
     let state;
@@ -121,12 +138,23 @@ export function createWorker({
     if (desired === "running") {
       const activity = session?.activity ?? null;
       const activityJson = JSON.stringify(activity);
-      const needsApply = revision !== prev.revision || prev.appliedActivityJson !== activityJson;
+      const applied = prev.appliedActivityJson !== "";
+      const connectionLost =
+        applied && typeof discord.isReady === "function" && !discord.isReady();
+      const reassertDue = applied && reassertMs > 0 && now() - prev.lastAppliedAt >= reassertMs;
+      const needsApply =
+        revision !== prev.revision ||
+        prev.appliedActivityJson !== activityJson ||
+        connectionLost ||
+        reassertDue;
       if (needsApply) {
+        if (connectionLost) log.info?.(`[discord] session lost for ${userId} — reconnecting`);
+        else if (reassertDue) log.info?.(`[discord] re-asserting presence for ${userId}`);
         try {
           await discord.apply(session.access_token, activity);
           state = "running";
           prev.appliedActivityJson = activityJson;
+          prev.lastAppliedAt = now();
         } catch (error) {
           state = "error";
           message = errorMessage(error);
@@ -186,7 +214,12 @@ export async function main({ env = process.env } = {}) {
 
   const pollIntervalMs = Number(env.POLL_INTERVAL_MS) || DEFAULT_POLL_INTERVAL_MS;
   const discord = stubDiscord({ fail: env.HARNESS_FAIL_DISCORD === "1" });
-  const pollOnce = createWorker({ apiBase, secret, discord });
+  const pollOnce = createWorker({
+    apiBase,
+    secret,
+    discord,
+    reassertMs: Number(env.PRESENCE_REASSERT_MS ?? 600_000),
+  });
 
   console.log(
     `harness: polling ${apiBase.replace(/\/+$/, "")}/api/public/worker/poll every ${pollIntervalMs}ms (Discord stubbed)`,

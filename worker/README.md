@@ -62,6 +62,7 @@ Copy `.env.example` to `.env`:
 | `WORKER_SHARED_SECRET` | same value as the `WORKER_SHARED_SECRET` secret in the Zora project |
 | `DISCORD_APP_ID`       | your Discord application id                                        |
 | `POLL_INTERVAL_MS`     | default `5000`                                                     |
+| `PRESENCE_REASSERT_MS` | default `600000`; how often the applied presence is re-sent to survive a dropped Discord session (`0` disables) |
 
 ## Standalone mode (no Zora app needed)
 
@@ -216,6 +217,13 @@ node harness/selftest.mjs   # or: bun run test:worker from the repo root
 - One SDK `Client` per Discord account. Many accounts on one VM = many clients;
   memory is the practical limit.
 - Discord may rate-limit or reject presence updates that change too often; the
-  worker only calls `UpdateRichPresence` when the `revision` changes.
+  worker calls `UpdateRichPresence` when the `revision` changes, when the SDK
+  session behind the presence is gone, and once per `PRESENCE_REASSERT_MS` to
+  re-assert an unchanged status. Discord keeps a rich presence only while that
+  session lives, so without those re-applies a status silently disappears after
+  a while and has to be restarted by hand.
+- If the worker itself is stopped (host reboot, container scaled to zero, no
+  outbound websocket) no presence can be published. systemd units here restart
+  it automatically; a container host needs its own restart policy.
 - If Discord revokes the OAuth grant (you remove the app in Discord settings),
   refresh fails and the API marks the session as errored.
