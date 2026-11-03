@@ -13,13 +13,29 @@ export const getChatInbox = createServerFn({ method: "POST" }).validator(chatAut
 });
 
 export const findChatUsers = createServerFn({ method: "POST" }).validator(chatSearch).handler(async ({ data }) => {
-  const { requireChatIdentity } = await import("./chat.server");
+  const { requireChatIdentity, syncChatDirectory } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  // Everyone who linked Discord should be findable, not just inbox visitors.
+  await syncChatDirectory();
   const query = data.query.replace(/[%_\\]/g, "\\$&");
-  const { data: users, error } = await supabaseAdmin.from("chat_users").select("discord_user_id,discord_name,display_name").neq("discord_user_id", me.id).ilike("discord_name", `%${query}%`).limit(20);
-  if (error) throw new Error("Could not search people. Try again.");
-  return users ?? [];
+  const pattern = `%${query}%`;
+  const columns = "discord_user_id,discord_name,display_name";
+  // The same person is stored with the @handle for Activity users and with the
+  // display name for browser-linked users, so match either column.
+  const [handles, names] = await Promise.all([
+    supabaseAdmin.from("chat_users").select(columns).neq("discord_user_id", me.id).ilike("discord_name", pattern).limit(20),
+    supabaseAdmin.from("chat_users").select(columns).neq("discord_user_id", me.id).ilike("display_name", pattern).limit(20),
+  ]);
+  if (handles.error || names.error) throw new Error("Could not search people. Try again.");
+  const seen = new Set<string>();
+  return [...(handles.data ?? []), ...(names.data ?? [])]
+    .filter((user) => {
+      if (seen.has(user.discord_user_id)) return false;
+      seen.add(user.discord_user_id);
+      return true;
+    })
+    .slice(0, 20);
 });
 
 export const getChatThread = createServerFn({ method: "POST" }).validator(chatPeer.extend({ before: z.string().datetime().optional() })).handler(async ({ data }) => {
