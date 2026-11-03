@@ -53,7 +53,14 @@ export const getChatThread = createServerFn({ method: "POST" }).validator(chatPe
   const { requireChatIdentity } = await import("./chat.server");
   const me = await requireChatIdentity(data.accessToken);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-  const { data: peer, error: peerError } = await supabaseAdmin.from("chat_users").select("discord_user_id,discord_name,display_name").eq("discord_user_id", data.peerId).maybeSingle();
+  const lookupPeer = () => supabaseAdmin.from("chat_users").select("discord_user_id,discord_name,display_name").eq("discord_user_id", data.peerId).maybeSingle();
+  let { data: peer, error: peerError } = await lookupPeer();
+  if (!peerError && !peer) {
+    // Someone who linked Discord through their profile may never have opened the inbox.
+    const { syncChatDirectory } = await import("./chat.server");
+    await syncChatDirectory();
+    ({ data: peer, error: peerError } = await lookupPeer());
+  }
   if (peerError || !peer) throw new Error("This Zora user could not be found.");
   let query = supabaseAdmin.from("chat_messages").select("id,sender_id,recipient_id,body,created_at,read_at").or(`and(sender_id.eq.${me.id},recipient_id.eq.${data.peerId}),and(sender_id.eq.${data.peerId},recipient_id.eq.${me.id})`).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(50);
   if (data.before) query = query.lt("created_at", data.before);
