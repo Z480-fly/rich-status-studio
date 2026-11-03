@@ -130,6 +130,13 @@ function serverWorkerLabel(state: string): string {
   }
 }
 
+/** "45s", "12m", "3h" — a raw second count gets unreadable on an overnight session. */
+function seenAgo(seconds: number): string {
+  if (seconds < 120) return `${seconds}s`;
+  if (seconds < 7200) return `${Math.round(seconds / 60)}m`;
+  return `${Math.round(seconds / 3600)}h`;
+}
+
 function PresenceStudio() {
   const [presetId, setPresetId] = useState("music");
   const [draft, setDraft] = useState<PresenceDraft>(
@@ -694,10 +701,18 @@ function PresenceStudio() {
                   </span>
                   {sp.workerSeenSecondsAgo != null && (
                     <span className="text-xs text-muted-foreground">
-                      Worker seen {sp.workerSeenSecondsAgo}s ago
+                      Worker seen {seenAgo(sp.workerSeenSecondsAgo)} ago
                     </span>
                   )}
                 </div>
+                {sp.desiredState === "running" &&
+                  !workerLive &&
+                  (sp.workerSeenSecondsAgo == null || sp.workerSeenSecondsAgo > 90) && (
+                    <p className="mt-1 text-xs text-amber-600">
+                      The worker has gone quiet. It reconnects and re-publishes this status on its
+                      own once it is reachable again — nothing to reset.
+                    </p>
+                  )}
                 {sp.workerMessage && (
                   <p
                     className={`mt-1 break-words text-xs ${

@@ -77,7 +77,7 @@ async function startMockApi() {
   return { server, rows, heartbeats, counters, base: `http://127.0.0.1:${port}` };
 }
 
-async function withFixture({ failDiscord = false } = {}, run) {
+async function withFixture({ failDiscord = false, workerOptions = {} } = {}, run) {
   const api = await startMockApi();
   const discord = stubDiscord({ fail: failDiscord, log: { info() {}, warn() {} } });
   const pollOnce = createWorker({
@@ -85,6 +85,7 @@ async function withFixture({ failDiscord = false } = {}, run) {
     secret: SECRET,
     discord,
     log: { info() {}, warn() {} },
+    ...workerOptions,
   });
   try {
     await run({ ...api, discord, pollOnce });
@@ -262,6 +263,63 @@ test("multiple users are reconciled independently", async () => {
     );
     assert.equal(await pollOnce(), 2);
   });
+});
+
+test("a dropped Discord session is reconnected and re-published without a new revision", async () => {
+  await withFixture({}, async ({ rows, heartbeats, pollOnce, discord }) => {
+    rows.set("u1", {
+      discord_user_id: "u1",
+      desired_state: "running",
+      revision: 1,
+      activity: { type: 0, details: "live" },
+      access_token: "token-v1",
+    });
+    await pollOnce();
+    assert.equal(discord.calls.length, 1);
+
+    // Token expiry / stale gateway: Discord forgets the presence with the session.
+    discord.dropConnection();
+    await pollOnce();
+
+    assert.equal(discord.calls.length, 2, "presence is re-published after the session drops");
+    assert.equal(discord.isReady(), true, "applying re-establishes the session");
+    assert.equal(heartbeats.at(-1).state, "running");
+    assert.equal(heartbeats.at(-1).revision, 1);
+
+    // Back to a quiet steady state — no apply on every pass.
+    await pollOnce();
+    assert.equal(discord.calls.length, 2);
+  });
+});
+
+test("an unchanged presence is re-asserted once the reassert interval passes", async () => {
+  let clock = 1_000_000;
+  await withFixture(
+    { workerOptions: { reassertMs: 60_000, now: () => clock } },
+    async ({ rows, pollOnce, discord }) => {
+      rows.set("u1", {
+        discord_user_id: "u1",
+        desired_state: "running",
+        revision: 3,
+        activity: { type: 2, details: "🎵 Listening to Music" },
+        access_token: "token-v1",
+      });
+      await pollOnce();
+      assert.equal(discord.calls.length, 1);
+
+      clock += 59_999;
+      await pollOnce();
+      assert.equal(discord.calls.length, 1, "inside the interval nothing is re-sent");
+
+      clock += 1;
+      await pollOnce();
+      assert.equal(discord.calls.length, 2, "presence is re-asserted at the interval");
+
+      clock += 60_000;
+      await pollOnce();
+      assert.equal(discord.calls.length, 3, "and again on the next interval");
+    },
+  );
 });
 
 let failed = 0;

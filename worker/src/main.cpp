@@ -561,6 +561,11 @@ struct Config {
   std::string secret;        // WORKER_SHARED_SECRET
   std::string discordAppId;  // DISCORD_APP_ID (informational in dry-run mode)
   long long pollIntervalMs = 5000;
+  // How long an applied presence is trusted before it is re-asserted. Discord
+  // keeps a rich presence only while the SDK session behind it survives, so a
+  // quiet worker eventually finds its status gone. Re-applying the same
+  // activity is idempotent and cheap at this interval (default 10 minutes).
+  long long reassertIntervalMs = 600000;
   // Standalone mode (ZORA_STANDALONE=1): the worker talks to Discord directly
   // and never contacts the Zora API. It owns the OAuth tokens (tokensFile)
   // and reads the desired presence from a local JSON file (presenceFile).
@@ -579,6 +584,9 @@ Config loadConfig() {
   cfg.discordAppId = envOr("DISCORD_APP_ID");
   cfg.pollIntervalMs = std::atoll(envOr("POLL_INTERVAL_MS", "5000").c_str());
   if (cfg.pollIntervalMs <= 0) cfg.pollIntervalMs = 5000;
+  cfg.reassertIntervalMs =
+      std::atoll(envOr("PRESENCE_REASSERT_MS", "600000").c_str());
+  if (cfg.reassertIntervalMs < 0) cfg.reassertIntervalMs = 0;  // 0 disables
   while (!cfg.apiBase.empty() && cfg.apiBase.back() == '/') cfg.apiBase.pop_back();
   cfg.standalone = envOr("ZORA_STANDALONE") == "1";
   cfg.discordClientId = envOr("DISCORD_CLIENT_ID");
@@ -854,6 +862,7 @@ struct SessionState {
   int64_t revision = -1;
   std::string desiredState;
   std::string appliedActivityJson;
+  std::chrono::steady_clock::time_point lastAppliedAt{};
 };
 
 class Worker {
@@ -917,15 +926,37 @@ class Worker {
       std::string activityJson;
       dumpValue(activity, &activityJson);
 
-      const bool needsApply =
-          revision != prev.revision || prev.appliedActivityJson != activityJson;
+      // A presence only lives as long as the SDK session that published it.
+      // That session drops when its bearer token expires or the gateway goes
+      // stale, and Discord forgets the presence with it — so "the revision
+      // changed" is not by itself enough to keep the status up. Applying again
+      // whenever the connection is gone (or the presence is old enough to be
+      // worth re-asserting) makes the worker heal itself instead of waiting to
+      // be reset from the phone.
+      const bool applied = !prev.appliedActivityJson.empty();
+      const bool connectionLost = applied && !pool_.ready(userId);
+      const bool reassertDue =
+          applied && cfg_.reassertIntervalMs > 0 &&
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              std::chrono::steady_clock::now() - prev.lastAppliedAt)
+                  .count() >= cfg_.reassertIntervalMs;
+
+      const bool needsApply = revision != prev.revision ||
+                              prev.appliedActivityJson != activityJson ||
+                              connectionLost || reassertDue;
       if (needsApply) {
+        if (connectionLost) {
+          logLine("[discord] session lost for " + userId + " — reconnecting");
+        } else if (reassertDue) {
+          logLine("[discord] re-asserting presence for " + userId);
+        }
         const JValue* tok = session.find("access_token");
         std::string token = (tok && tok->type == JValue::Type::String) ? tok->string : "";
         std::string err;
         if (pool_.apply(userId, token, activity, &err)) {
           state = "running";
           prev.appliedActivityJson = activityJson;
+          prev.lastAppliedAt = std::chrono::steady_clock::now();
         } else {
           state = "error";
           message = err;
