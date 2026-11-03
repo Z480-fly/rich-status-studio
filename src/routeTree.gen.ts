@@ -10,7 +10,10 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FontsRouteImport } from './routes/fonts'
 import { Route as InboxRouteImport } from './routes/inbox'
+import { Route as ProfileRouteImport } from './routes/profile'
+import { Route as UHandleRouteImport } from './routes/u.$handle'
 import { Route as ApiPublicActivityBridgeEventRouteImport } from './routes/api/public/activity-bridge/event'
 import { Route as ApiPublicDiscordCallbackRouteImport } from './routes/api/public/discord/callback'
 import { Route as ApiPublicPresenceImageNameRouteImport } from './routes/api/public/presence-image.$name'
@@ -23,9 +26,24 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FontsRoute = FontsRouteImport.update({
+  id: '/fonts',
+  path: '/fonts',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InboxRoute = InboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProfileRoute = ProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UHandleRoute = UHandleRouteImport.update({
+  id: '/u/$handle',
+  path: '/u/$handle',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiPublicActivityBridgeEventRoute =
@@ -66,7 +84,10 @@ const ApiPublicWorkerPollRoute = ApiPublicWorkerPollRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/fonts': typeof FontsRoute
   '/inbox': typeof InboxRoute
+  '/profile': typeof ProfileRoute
+  '/u/$handle': typeof UHandleRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -76,7 +97,10 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/fonts': typeof FontsRoute
   '/inbox': typeof InboxRoute
+  '/profile': typeof ProfileRoute
+  '/u/$handle': typeof UHandleRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -87,7 +111,10 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/fonts': typeof FontsRoute
   '/inbox': typeof InboxRoute
+  '/profile': typeof ProfileRoute
+  '/u/$handle': typeof UHandleRoute
   '/api/public/activity-bridge/event': typeof ApiPublicActivityBridgeEventRoute
   '/api/public/discord/callback': typeof ApiPublicDiscordCallbackRoute
   '/api/public/presence-image/$name': typeof ApiPublicPresenceImageNameRoute
@@ -99,7 +126,10 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/fonts'
     | '/inbox'
+    | '/profile'
+    | '/u/$handle'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -109,7 +139,10 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/fonts'
     | '/inbox'
+    | '/profile'
+    | '/u/$handle'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -119,7 +152,10 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/'
+    | '/fonts'
     | '/inbox'
+    | '/profile'
+    | '/u/$handle'
     | '/api/public/activity-bridge/event'
     | '/api/public/discord/callback'
     | '/api/public/presence-image/$name'
@@ -130,7 +166,10 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FontsRoute: typeof FontsRoute
   InboxRoute: typeof InboxRoute
+  ProfileRoute: typeof ProfileRoute
+  UHandleRoute: typeof UHandleRoute
   ApiPublicActivityBridgeEventRoute: typeof ApiPublicActivityBridgeEventRoute
   ApiPublicDiscordCallbackRoute: typeof ApiPublicDiscordCallbackRoute
   ApiPublicPresenceImageNameRoute: typeof ApiPublicPresenceImageNameRoute
@@ -148,11 +187,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/fonts': {
+      id: '/fonts'
+      path: '/fonts'
+      fullPath: '/fonts'
+      preLoaderRoute: typeof FontsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/inbox': {
       id: '/inbox'
       path: '/inbox'
       fullPath: '/inbox'
       preLoaderRoute: typeof InboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/profile': {
+      id: '/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof ProfileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/u/$handle': {
+      id: '/u/$handle'
+      path: '/u/$handle'
+      fullPath: '/u/$handle'
+      preLoaderRoute: typeof UHandleRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/activity-bridge/event': {
@@ -202,7 +262,10 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FontsRoute: FontsRoute,
   InboxRoute: InboxRoute,
+  ProfileRoute: ProfileRoute,
+  UHandleRoute: UHandleRoute,
   ApiPublicActivityBridgeEventRoute: ApiPublicActivityBridgeEventRoute,
   ApiPublicDiscordCallbackRoute: ApiPublicDiscordCallbackRoute,
   ApiPublicPresenceImageNameRoute: ApiPublicPresenceImageNameRoute,

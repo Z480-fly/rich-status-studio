@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageCircle } from "lucide-react";
+import { MessageCircle, Palette, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -550,7 +550,9 @@ function PresenceStudio() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="ghost" asChild><Link to="/fonts"><Palette />Font Studio</Link></Button>
+            <Button variant="ghost" asChild><Link to="/profile"><UserRound />Profile</Link></Button>
             <Button variant="outline" asChild><Link to="/inbox"><MessageCircle />Inbox</Link></Button>
             <span
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
