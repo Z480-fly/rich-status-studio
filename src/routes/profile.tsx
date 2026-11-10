@@ -46,6 +46,7 @@ export const Route = createFileRoute("/profile")({
       { property: "og:title", content: "Zora profile builder" },
       { property: "og:description", content: "One page, your corner of the internet." },
       { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: ProfileBuilder,

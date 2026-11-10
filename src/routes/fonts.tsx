@@ -12,6 +12,7 @@ export const Route = createFileRoute("/fonts")({
       { property: "og:title", content: "Zora Font Studio" },
       { property: "og:description", content: "Gothic, cursive, small caps and more — one tap to copy." },
       { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary" },
     ],
   }),
   component: FontStudio,

@@ -46,6 +46,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-ring-offset-background: var(--background);
+  --color-warning: var(--warning);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
@@ -62,34 +63,31 @@
 }
 
 :root {
-  --radius: 0.9rem;
+  --radius: 0.5rem;
   --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
   --font-body: "DM Sans", ui-sans-serif, system-ui, sans-serif;
 
-  --background: oklch(0.17 0.018 265);
+  --background: oklch(0.16 0.004 280);
   --foreground: oklch(0.96 0.005 250);
-  --card: oklch(0.22 0.02 265);
+  --card: oklch(0.21 0.006 280);
   --card-foreground: oklch(0.96 0.005 250);
-  --popover: oklch(0.22 0.02 265);
+  --popover: oklch(0.24 0.006 280);
   --popover-foreground: oklch(0.96 0.005 250);
-  --primary: oklch(0.84 0.16 165);
-  --primary-foreground: oklch(0.2 0.03 165);
-  --secondary: oklch(0.28 0.022 265);
+  --primary: oklch(0.84 0.12 155);
+  --primary-foreground: oklch(0.19 0.025 155);
+  --secondary: oklch(0.27 0.008 280);
   --secondary-foreground: oklch(0.96 0.005 250);
-  --muted: oklch(0.26 0.02 265);
-  --muted-foreground: oklch(0.7 0.02 260);
-  --accent: oklch(0.3 0.03 265);
+  --muted: oklch(0.26 0.006 280);
+  --muted-foreground: oklch(0.71 0.008 280);
+  --accent: oklch(0.3 0.008 280);
   --accent-foreground: oklch(0.96 0.005 250);
   --destructive: oklch(0.62 0.21 25);
   --destructive-foreground: oklch(0.97 0.01 25);
-  --border: oklch(0.32 0.022 265);
-  --input: oklch(0.3 0.022 265);
+  --border: oklch(0.33 0.008 280);
+  --input: oklch(0.23 0.006 280);
+  --warning: oklch(0.82 0.13 85);
   --ring: oklch(0.84 0.16 165);
-  --surface-glow: radial-gradient(
-    120% 90% at 15% 0%,
-    oklch(0.35 0.08 190 / 0.55),
-    transparent 60%
-  );
+  --surface-glow: none;
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
@@ -189,7 +187,7 @@
   h2,
   h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
+    letter-spacing: 0;
   }
 }
 
@@ -201,7 +199,7 @@
 @utility panel {
   background-color: color-mix(in oklch, var(--card) 88%, transparent);
   border: 1px solid var(--border);
-  border-radius: var(--radius-2xl);
+  border-radius: var(--radius);
   backdrop-filter: blur(12px);
 }
 
@@ -220,4 +218,27 @@
 @utility field-focus {
   border-color: var(--ring);
   box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 25%, transparent);
+}
+
+.studio-shell [hidden] { display: none !important; }
+.studio-shell .editor-section > .space-y-5 > div:not([hidden]) > label { margin-top: 1.25rem; }
+.studio-shell .editor-section > .space-y-5 > div:not([hidden]) > div { margin-top: 1.25rem; }
+.studio-shell .connection-section { border-top: 1px solid var(--border); }
+.studio-shell .connection-section h2 { font-size: 0.875rem; }
+.studio-shell .connection-section p:empty { display: none; }
+.studio-shell .connection-section button { border-radius: var(--radius); }
+.library-empty { display: flex; min-height: 240px; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; border-bottom: 1px solid var(--border); }
+.preset-tile { transition: border-color 160ms ease; }
+.preset-tile:hover { border-color: var(--primary); }
+.studio-shell .preview-section { align-self: start; }
+@media (min-width: 1024px) { .studio-shell .preview-section { position: sticky; top: 24px; } }
+@media (max-width: 639px) {
+  .studio-nav nav button, .studio-nav nav a { font-size: 12px; padding-inline: 8px; }
+  .studio-shell .creator-layout { display: flex; flex-direction: column; gap: 1.5rem; }
+  .studio-shell .preview-section { order: -1; width: 100%; }
+  .studio-shell .preview-section > details { display: none; }
+  .studio-shell .preview-section .connection-section { padding-bottom: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
