@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Copy, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StudioNav } from "@/components/StudioNav";
 import { getChatInbox, getChatThread, findChatUsers, listChatPeople, sendChatMessage, setChatBlock } from "@/lib/chat.functions";
 import { getAccessToken, connectToDiscord, isInsideDiscord, subscribeConnection } from "@/lib/discord-client";
 import { getDiscordLinkUrl } from "@/lib/server-presence.functions";
@@ -92,10 +92,7 @@ export function Inbox() {
   const unread = inbox.data?.conversations.reduce((sum, conversation) => sum + Number(conversation.unread), 0) ?? 0;
   return (
     <main className="safe-area-shell mx-auto min-h-screen max-w-6xl px-4 sm:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-5">
-        <Link to="/" className="font-display text-xl font-semibold">𝒁𝒐𝒓𝒂 𝑺𝒕𝒖𝒅𝒊𝒐 <span className="text-primary">✦</span></Link>
-        <Button variant="ghost" asChild><Link to="/"><Sparkles />Status creator</Link></Button>
-      </header>
+      <StudioNav active="inbox" />
       <div className="flex items-center justify-between py-6">
         <div><h1 className="text-3xl font-semibold">Inbox {unread > 0 && <span className="text-lg text-primary">{unread}</span>}</h1><p className="mt-1 text-sm text-muted-foreground">{inbox.data?.me ? `Signed in as ${inbox.data.me.displayName}` : "Your Zora conversations"}</p></div>
         {inbox.data?.me && <Button variant="outline" onClick={() => { setSearching(true); setPeer(null); setError(""); }}><Plus />New message</Button>}
