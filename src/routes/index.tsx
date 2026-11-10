@@ -1,5 +1,7 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { MessageCircle, Palette, UserRound } from "lucide-react";
+import { createFileRoute } from "@tanstack/react-router";
+import { ChevronDown, FolderHeart, Image, Save, Settings2, SlidersHorizontal, Sparkles, Timer } from "lucide-react";
+import { StudioNav } from "@/components/StudioNav";
+import { PresetLibrary } from "@/components/PresetLibrary";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -8,8 +10,6 @@ import {
   verbFor,
   buildActivityPayload,
   normalizeHex,
-  studioBackgroundStyle,
-  studioGlowStyle,
   swatchPath,
   type PresenceDraft,
   type TimestampMode,
@@ -47,13 +47,13 @@ import { ActivityBridgePanel } from "@/components/ActivityBridgePanel";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Presence Studio — Custom Discord Rich Presence" },
+      { title: "Zora Studio — Discord Presence Creator" },
       {
         name: "description",
         content:
           "Design a custom Discord rich presence with presets, artwork, timers and live preview, then push it to your profile from inside the Activity.",
       },
-      { property: "og:title", content: "Presence Studio — Custom Discord Rich Presence" },
+      { property: "og:title", content: "Zora Studio — Discord Presence Creator" },
       {
         property: "og:description",
         content:
@@ -139,8 +139,10 @@ function seenAgo(seconds: number): string {
 
 function PresenceStudio() {
   const [presetId, setPresetId] = useState("music");
+  const [workspace, setWorkspace] = useState<"creator" | "presets" | "settings">("creator");
+  const [editorTab, setEditorTab] = useState<"text" | "artwork" | "timing">("text");
   const [draft, setDraft] = useState<PresenceDraft>(
-    () => PRESETS.find((p) => p.id === "music")!.draft,
+    () => ({ ...PRESETS[0]?.draft } as PresenceDraft),
   );
   const [connected, setConnected] = useState(false);
   const [connectionState, setConnectionState] = useState<ConnectionState>("disconnected");
@@ -261,7 +263,7 @@ function PresenceStudio() {
   }, [canUseAccount]);
 
   const activePreset = useMemo(
-    () => PRESETS.find((p) => p.id === presetId) ?? PRESETS[0]!,
+    () => PRESETS.find((p) => p.id === presetId) ?? PRESETS[0],
     [presetId],
   );
 
@@ -269,7 +271,7 @@ function PresenceStudio() {
   // the whole dashboard background, and becomes the profile artwork when no
   // photo is chosen.
   const draftColor = normalizeHex(draft.color);
-  const accent = draftColor ?? activePreset.accent;
+  const accent = draftColor ?? activePreset?.accent ?? "var(--primary)";
 
   // When a status is live the preview timer counts from the instant Discord was
   // given, so it reads the same as the profile instead of restarting.
@@ -299,6 +301,8 @@ function PresenceStudio() {
     setPresetId(id);
     setEditingId(null);
     setDraft({ ...preset.draft });
+    setSaveName("");
+    setWorkspace("creator");
     setLive(false);
   };
 
@@ -307,6 +311,7 @@ function PresenceStudio() {
     setEditingId(preset.id);
     setDraft({ ...preset.draft });
     setSaveName(preset.name);
+    setWorkspace("creator");
     setLive(false);
   };
 
@@ -536,72 +541,25 @@ function PresenceStudio() {
   };
 
   return (
-    <main
-      className="safe-area-shell min-h-screen px-4 py-8 transition-[background-color] duration-500 sm:px-8 lg:px-12"
-      style={studioBackgroundStyle(draft.color)}
-    >
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-x-0 top-0 h-64 transition-opacity duration-500"
-        style={studioGlowStyle(draft.color) ?? { opacity: 0 }}
-      />
-      <div className="relative mx-auto max-w-6xl">
-        <header className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
-              Presence Studio
-            </p>
-            <h1 className="mt-2 text-3xl font-bold sm:text-4xl">Build your status</h1>
-            <p className="mt-2 max-w-xl text-sm text-muted-foreground">
-              Pick a preset, rewrite every line, then push it live to your Discord profile.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="ghost" asChild><Link to="/fonts"><Palette />Font Studio</Link></Button>
-            <Button variant="ghost" asChild><Link to="/profile"><UserRound />Profile</Link></Button>
-            <Button variant="outline" asChild><Link to="/inbox"><MessageCircle />Inbox</Link></Button>
-            <span
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium ${
-                pill.tone === "warn"
-                  ? "border-amber-500/50 bg-amber-500/10 text-amber-600"
-                  : pill.tone === "on"
-                    ? "border-primary/50 bg-primary/10 text-primary"
-                    : "border-border bg-secondary text-muted-foreground"
-              }`}
-            >
-              <span
-                className={`size-2 rounded-full ${
-                  pill.tone === "warn"
-                    ? "animate-pulse bg-amber-500"
-                    : pill.tone === "on"
-                      ? "animate-pulse bg-primary"
-                      : "bg-muted-foreground"
-                }`}
-              />
-              {pill.label}
-            </span>
-          </div>
-        </header>
-
-        {!inDiscord && (
-          <div className="mt-6 rounded-2xl border border-border bg-secondary/60 p-4 text-sm text-muted-foreground">
-            <span className="font-medium text-foreground">This is the browser view.</span> Link your
-            Discord account once below, then use{" "}
-            <span className="font-medium text-foreground">Go live with this draft</span> — the
-            worker keeps the status on your profile after you close everything. Running it as an
-            Activity inside a voice channel is a separate, shorter-lived option.
-          </div>
-        )}
-
-        {/* Server presence: link + worker-driven Rich Presence */}
-        <section className="panel mt-6 p-5 sm:p-6">
+    <main className="studio-shell min-h-screen px-4 pb-10 pt-5 sm:px-8">
+      <div className="mx-auto max-w-6xl">
+        <StudioNav />
+        <div className="flex items-center justify-between gap-3 py-7">
+          <div><p className="mb-1 text-xs font-medium text-muted-foreground">YOUR SPACE, YOUR STATUS</p><h1 className="text-3xl font-semibold">Presence studio<span className="text-primary">.</span></h1></div>
+          <span className={`inline-flex shrink-0 items-center gap-2 text-xs ${pill.tone === "on" ? "text-primary" : "text-muted-foreground"}`}><span className={`size-2 rounded-full ${pill.tone === "on" ? "bg-primary" : "bg-muted-foreground"}`} />{pill.tone === "on" ? "Live" : pill.tone === "warn" ? "Reconnecting" : "Offline"}</span>
+        </div>
+        <nav aria-label="Studio sections" className="flex gap-1 border-b border-border">{([
+          ["creator", "Creator", Sparkles], ["presets", "Presets", FolderHeart], ["settings", "Settings", Settings2],
+        ] as const).map(([id, label, Icon]) => <Button key={id} variant="ghost" aria-current={workspace === id ? "page" : undefined} className={`h-12 flex-1 rounded-none border-b-2 sm:flex-none sm:px-6 ${workspace === id ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`} onClick={() => setWorkspace(id)}><Icon />{label}{id === "presets" && savedPresets.length > 0 && <span className="text-xs">{savedPresets.length}</span>}</Button>)}</nav>
+        {status.message && <p role={status.kind === "error" ? "alert" : "status"} className={`mt-4 break-words rounded-lg border border-border px-4 py-3 text-sm ${status.kind === "error" ? "text-destructive" : "text-primary"}`}>{status.message}</p>}
+        <div hidden={workspace !== "presets"}><PresetLibrary saved={savedPresets} loading={savedLoading} linked={canUseAccount} busy={status.kind === "busy"} selectedId={editingId} templateId={presetId} onApply={applySavedPreset} onTemplate={choosePreset} onDuplicate={preset => void handleDuplicatePreset(preset)} onDelete={id => void handleDeletePreset(id)} onConnect={() => setWorkspace("settings")} /></div>
+        <div hidden={workspace !== "settings"} className="py-6"><h2 className="text-2xl font-semibold">Settings</h2>        {/* Server presence: link + worker-driven Rich Presence */}
+        <section className="connection-section py-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">Server presence</h2>
+              <h2 className="text-lg font-semibold">Discord connection</h2>
               <p className="mt-1 max-w-xl text-sm text-muted-foreground">
-                Keeps your status running after you leave the Activity. A Linux worker applies it
-                through Discord's Social SDK — link your account once, then go live from here.
+                
               </p>
             </div>
             {sp?.linked && sp.username && (
@@ -631,18 +589,15 @@ function PresenceStudio() {
               </div>
             ) : (
               <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-                <button
+                <Button
                   type="button"
                   onClick={() => void handleLinkDiscord()}
                   disabled={spBusy}
                   className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                 >
                   Link Discord account
-                </button>
-                <span className="text-xs text-muted-foreground">
-                  One-time Discord OAuth — only <code>identify</code> and the presence scope are
-                  requested. No password, no user token.
-                </span>
+                </Button>
+
               </div>
             )
           ) : (
@@ -650,37 +605,34 @@ function PresenceStudio() {
               <div className="flex flex-wrap items-center gap-2">
                 {sp.desiredState === "running" ? (
                   <>
-                    <button
+                    <Button
                       type="button"
                       onClick={() => void handleServerUpdate()}
                       disabled={spBusy}
                       className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                     >
-                      Push this update
-                    </button>
-                    <button
+                      Update status
+                    </Button>
+                    <Button
                       type="button"
                       onClick={() => void handleServerStop()}
                       disabled={spBusy}
                       className="min-h-11 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
                     >
                       Stop
-                    </button>
+                    </Button>
                   </>
                 ) : (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => void handleServerStart()}
                     disabled={spBusy}
                     className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                   >
-                    Go live with this draft
-                  </button>
+                    Go live
+                  </Button>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  Uses the draft below
-                  {sp.desiredState === "running" ? " — changes apply on push" : ""}
-                </span>
+
               </div>
 
               <div className="rounded-xl border border-border bg-background/60 p-3">
@@ -691,7 +643,7 @@ function PresenceStudio() {
                         sp.workerState === "running"
                           ? "animate-pulse bg-primary"
                           : sp.workerState === "connecting"
-                            ? "animate-pulse bg-amber-500"
+                            ? "animate-pulse bg-warning"
                             : sp.workerState === "error"
                               ? "bg-destructive"
                               : "bg-muted-foreground"
@@ -708,7 +660,7 @@ function PresenceStudio() {
                 {sp.desiredState === "running" &&
                   !workerLive &&
                   (sp.workerSeenSecondsAgo == null || sp.workerSeenSecondsAgo > 90) && (
-                    <p className="mt-1 text-xs text-amber-600">
+                    <p className="mt-1 text-xs text-warning">
                       The worker has gone quiet. It reconnects and re-publishes this status on its
                       own once it is reachable again — nothing to reset.
                     </p>
@@ -727,132 +679,20 @@ function PresenceStudio() {
           )}
         </section>
 
-        <ActivityBridgePanel />
-
-        <section className="mt-8">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            Built-in presets
-          </h2>
-          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
-            {PRESETS.map((preset) => {
-              const selected = preset.id === presetId && !editingId;
-              return (
-                <button
-                  key={preset.id}
-                  onClick={() => choosePreset(preset.id)}
-                  style={{ borderLeftColor: preset.accent }}
-                  className={`group flex items-center gap-2 rounded-xl border border-l-4 px-3 py-3 text-left transition-all ${
-                    selected
-                      ? "border-primary bg-primary/10 shadow-[0_0_0_3px_color-mix(in_oklch,var(--primary)_18%,transparent)]"
-                      : "border-border bg-card/70 hover:border-primary/50 hover:bg-card"
-                  }`}
-                >
-                  <span className="text-lg">{preset.emoji}</span>
-                  <span className="text-sm font-medium">{preset.name}</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Personal saved presets */}
-        <section className="mt-8">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-              My saved presets
-            </h2>
-            {connectionState === "reconnecting" && (
-              <span className="text-xs text-muted-foreground">Reconnecting…</span>
-            )}
-          </div>
-
-          {!canUseAccount ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Link your Discord account above to save and load your personal presets.
-            </p>
-          ) : savedLoading ? (
-            <p className="mt-3 text-sm text-muted-foreground">Loading your presets…</p>
-          ) : (
-            <>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {savedPresets.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    No saved presets yet. Customize below and hit Save.
-                  </p>
-                )}
-                {savedPresets.map((preset) => {
-                  const selected = editingId === preset.id;
-                  return (
-                    <div
-                      key={preset.id}
-                      className={`flex items-center gap-1 rounded-xl border pl-3 pr-1 py-1.5 ${
-                        selected ? "border-primary bg-primary/10" : "border-border bg-card/70"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => applySavedPreset(preset)}
-                        className="flex items-center gap-2 text-left"
-                      >
-                        <span>{preset.emoji}</span>
-                        <span className="text-sm font-medium">{preset.name}</span>
-                      </button>
-                      <button
-                        type="button"
-                        title="Duplicate"
-                        onClick={() => void handleDuplicatePreset(preset)}
-                        className="ml-1 rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
-                      >
-                        ⧉
-                      </button>
-                      <button
-                        type="button"
-                        title="Delete"
-                        onClick={() => void handleDeletePreset(preset.id)}
-                        className="rounded-lg px-2 py-1 text-xs text-muted-foreground hover:bg-destructive/20 hover:text-destructive"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-end gap-2">
-                <div className="min-w-[180px] flex-1">
-                  <Label>Preset name</Label>
-                  <input
-                    value={saveName}
-                    onChange={(e) => setSaveName(e.target.value)}
-                    placeholder="Name this preset"
-                    className="field mt-1.5 focus:field-focus"
-                    maxLength={60}
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleSavePreset()}
-                  disabled={status.kind === "busy"}
-                  className="min-h-11 rounded-xl bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
-                >
-                  {editingId ? "Update preset" : "Save as preset"}
-                </button>
-              </div>
-            </>
-          )}
-        </section>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
-          <section className="panel p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Customize</h2>
+<details className="mt-5 border-t border-border pt-5"><summary className="cursor-pointer text-base font-semibold">Activity sharing</summary><ActivityBridgePanel /></details></div>
+        <div hidden={workspace !== "creator"} className="creator-layout grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <section className="editor-section min-w-0 lg:border-r lg:border-border lg:pr-8">
+            <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">{editingId ? saveName || "Edit preset" : "Create a status"}</h2><span className="text-xs text-muted-foreground">{activePreset?.name}</span></div>
+            <div className="editor-tabs mt-5 flex border-b border-border" role="tablist" aria-label="Status fields">{([
+              ["text", "Text", SlidersHorizontal], ["artwork", "Artwork", Image], ["timing", "Timing", Timer],
+            ] as const).map(([id, label, Icon]) => <Button key={id} role="tab" aria-selected={editorTab === id} variant="ghost" className={`flex-1 rounded-none border-b-2 py-5 ${editorTab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`} onClick={() => setEditorTab(id)}><Icon />{label}</Button>)}</div>
 
             <div className="mt-5 space-y-5">
-              <div className="rounded-xl border border-dashed border-border bg-background/50 p-3">
+              <div hidden={editorTab !== "text"}>
+              <details className="border-b border-border pb-4">
+                <summary className="flex cursor-pointer items-center justify-between text-sm text-muted-foreground">Fill from a link<ChevronDown className="size-4" /></summary>
+                <div className="pt-3">
                 <Label>Quick fill from URL</Label>
-                <p className="mb-2 text-xs text-muted-foreground">
-                  Paste a YouTube, Spotify, or any link — Zora reads the page and fills the fields
-                  below. You keep full control to edit anything afterwards.
-                </p>
                 <div className="flex items-center gap-2">
                   <input
                     value={urlInput}
@@ -861,25 +701,26 @@ function PresenceStudio() {
                       if (e.key === "Enter") void handleExtractUrl();
                     }}
                     placeholder="https://youtube.com/watch?v=..."
-                    className="field flex-1 focus:field-focus"
+                    className="field min-w-0 flex-1 focus:field-focus"
                     disabled={urlLoading}
                   />
-                  <button
+                  <Button
                     type="button"
                     onClick={() => void handleExtractUrl()}
                     disabled={urlLoading || !urlInput.trim()}
                     className="min-h-11 rounded-xl border border-border bg-secondary px-4 py-2 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
                   >
                     {urlLoading ? "Extracting…" : "Extract"}
-                  </button>
+                  </Button>
                 </div>
-              </div>
+                </div>
+              </details>
 
-              <div>
+              <div className="mt-5">
                 <Label>Activity type</Label>
                 <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {ACTIVITY_TYPES.map((t) => (
-                    <button
+                    <Button
                       key={t.value}
                       onClick={() => set("type", t.value)}
                       className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
@@ -889,14 +730,13 @@ function PresenceStudio() {
                       }`}
                     >
                       {t.label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>
 
               <Field
-                label="Details (first line)"
-                hint="Where your emoji + headline goes, e.g. 🎵 Listening to Music"
+                label="Details"
                 value={draft.details}
                 onChange={(v) => set("details", v)}
                 placeholder="🎵 Listening to Music"
@@ -904,13 +744,15 @@ function PresenceStudio() {
               />
 
               <Field
-                label="State (second line)"
+                label="State"
                 value={draft.state}
                 onChange={(v) => set("state", v)}
                 placeholder="On repeat, all night"
                 max={128}
               />
 
+              </div>
+              <div hidden={editorTab !== "artwork"}>
               <div>
                 <Label>Status colour</Label>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -919,7 +761,7 @@ function PresenceStudio() {
                     onChange={(e) => set("color", e.target.value)}
                     placeholder="#4ade80"
                     maxLength={7}
-                    className="field w-32 focus:field-focus"
+                    aria-label="Status colour" className="field w-32 focus:field-focus"
                   />
                   <span
                     aria-hidden
@@ -927,10 +769,10 @@ function PresenceStudio() {
                     style={{ backgroundColor: draftColor ?? "transparent" }}
                   />
                   {COLOUR_SWATCHES.map((hex) => (
-                    <button
+                    <Button
                       key={hex}
                       type="button"
-                      title={hex}
+                      title={hex} aria-label={`Choose colour ${hex}`}
                       onClick={() => set("color", hex)}
                       className="size-7 rounded-md border border-border transition-transform hover:scale-110"
                       style={{ backgroundColor: hex }}
@@ -969,6 +811,8 @@ function PresenceStudio() {
                 />
               </div>
 
+              </div>
+              <div hidden={editorTab !== "timing"}>
               <div>
                 <Label>Timer</Label>
                 <div className="mt-2 flex flex-wrap gap-2">
@@ -979,7 +823,7 @@ function PresenceStudio() {
                       ["remaining", "Count down"],
                     ] as [TimestampMode, string][]
                   ).map(([mode, label]) => (
-                    <button
+                    <Button
                       key={mode}
                       onClick={() => set("timestampMode", mode)}
                       className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
@@ -989,13 +833,13 @@ function PresenceStudio() {
                       }`}
                     >
                       {label}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 {draft.timestampMode === "remaining" && (
                   <div className="mt-3 flex items-center gap-3">
                     <input
-                      type="number"
+                      aria-label="Duration in minutes" type="number"
                       min={1}
                       max={1440}
                       value={draft.durationMinutes}
@@ -1013,7 +857,7 @@ function PresenceStudio() {
                   <input
                     type="number"
                     min={0}
-                    value={draft.partyCurrent}
+                    aria-label="Party current" value={draft.partyCurrent}
                     onChange={(e) => set("partyCurrent", Number(e.target.value))}
                     className="field w-24 focus:field-focus"
                   />
@@ -1021,73 +865,191 @@ function PresenceStudio() {
                   <input
                     type="number"
                     min={0}
-                    value={draft.partyMax}
+                    aria-label="Party maximum" value={draft.partyMax}
                     onChange={(e) => set("partyMax", Number(e.target.value))}
                     className="field w-24 focus:field-focus"
                   />
                 </div>
               </div>
+              </div>
+            </div>
+            <div className="mt-7 border-t border-border pt-5">
+              <label className="block text-sm font-medium" htmlFor="preset-name">Preset name</label>
+              <div className="mt-2 flex gap-2"><input id="preset-name" value={saveName} onChange={e => setSaveName(e.target.value)} placeholder="Name your preset" maxLength={60} className="field min-w-0 flex-1 focus:field-focus" /><Button variant="secondary" className="h-11" disabled={!canUseAccount || status.kind === "busy"} onClick={() => void handleSavePreset()}><Save />{editingId ? "Update" : "Save"}</Button></div>
+              {!canUseAccount && <Button variant="link" className="mt-1 px-0 text-xs" onClick={() => setWorkspace("settings")}>Link Discord to save presets</Button>}
+              {editingId && <Button variant="ghost" className="mt-2 text-xs" onClick={() => { setEditingId(null); setSaveName(""); }}>Save a new copy instead</Button>}
             </div>
           </section>
 
-          <section className="space-y-5">
-            <div className="panel p-5 sm:p-6">
-              <h2 className="text-lg font-semibold">Live preview</h2>
+          <section className="preview-section min-w-0 space-y-5">
+            <div className="preview-tool rounded-lg border border-border bg-card p-5">
+              <div className="flex items-center justify-between"><h2 className="text-sm font-semibold">Discord preview</h2><span className="text-xs text-muted-foreground">{workerLive || live ? "Live" : "Draft"}</span></div>
               <PresenceCard draft={draft} accent={accent} liveStart={activityStart} />
             </div>
 
-            <div className="panel p-5 sm:p-6">
+                    {/* Server presence: link + worker-driven Rich Presence */}
+        <section className="connection-section py-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Discord connection</h2>
+              <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+                
+              </p>
+            </div>
+            {sp?.linked && sp.username && (
+              <span className="inline-flex items-center gap-2 rounded-full border border-border bg-secondary px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Linked as {sp.username}
+              </span>
+            )}
+          </div>
+
+          {!sp ? (
+            <p className="mt-4 text-sm text-muted-foreground">Checking link status…</p>
+          ) : !sp.linked ? (
+            inDiscord ? (
+              /*
+               * Inside the Activity the page is served from Discord's proxy host, so
+               * Discord refuses the OAuth redirect ("Invalid OAuth2 redirect_uri").
+               * Offering the button there only led people to a Discord error screen.
+               */
+              <div className="mt-4 rounded-xl border border-border bg-background/60 p-3">
+                <p className="text-sm font-medium">Link from a browser tab to go live</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Discord blocks account linking inside an Activity, so this button only appears
+                  outside Discord. Open <code className="break-all">{PUBLIC_SITE_ORIGIN}</code> in
+                  your browser and use “Link Discord account” there — once. The worker keeps your
+                  status running from then on, wherever you are.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+                <Button
+                  type="button"
+                  onClick={() => void handleLinkDiscord()}
+                  disabled={spBusy}
+                  className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  Link Discord account
+                </Button>
+
+              </div>
+            )
+          ) : (
+            <div className="mt-4 space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                {sp.desiredState === "running" ? (
+                  <>
+                    <Button
+                      type="button"
+                      onClick={() => void handleServerUpdate()}
+                      disabled={spBusy}
+                      className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                      Update status
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void handleServerStop()}
+                      disabled={spBusy}
+                      className="min-h-11 rounded-xl border border-border bg-secondary px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
+                    >
+                      Stop
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={() => void handleServerStart()}
+                    disabled={spBusy}
+                    className="min-h-11 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                  >
+                    Go live
+                  </Button>
+                )}
+
+              </div>
+
+              <div className="rounded-xl border border-border bg-background/60 p-3">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                  <span className="inline-flex items-center gap-2 font-medium">
+                    <span
+                      className={`size-2 rounded-full ${
+                        sp.workerState === "running"
+                          ? "animate-pulse bg-primary"
+                          : sp.workerState === "connecting"
+                            ? "animate-pulse bg-warning"
+                            : sp.workerState === "error"
+                              ? "bg-destructive"
+                              : "bg-muted-foreground"
+                      }`}
+                    />
+                    {serverWorkerLabel(sp.workerState)}
+                  </span>
+                  {sp.workerSeenSecondsAgo != null && (
+                    <span className="text-xs text-muted-foreground">
+                      Worker seen {seenAgo(sp.workerSeenSecondsAgo)} ago
+                    </span>
+                  )}
+                </div>
+                {sp.desiredState === "running" &&
+                  !workerLive &&
+                  (sp.workerSeenSecondsAgo == null || sp.workerSeenSecondsAgo > 90) && (
+                    <p className="mt-1 text-xs text-warning">
+                      The worker has gone quiet. It reconnects and re-publishes this status on its
+                      own once it is reachable again — nothing to reset.
+                    </p>
+                  )}
+                {sp.workerMessage && (
+                  <p
+                    className={`mt-1 break-words text-xs ${
+                      sp.workerState === "error" ? "text-destructive" : "text-muted-foreground"
+                    }`}
+                  >
+                    {sp.workerMessage}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+
+
+            <div className="border-t border-border pt-5">
               <div className="flex flex-col gap-3">
                 {!inDiscord ? (
-                  <div className="rounded-xl border border-border bg-background/60 p-3">
-                    <p className="text-sm font-medium">Inside Discord only</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      These buttons push the status through the Activity itself, so they only work
-                      while the page runs inside a voice channel. For a status that outlives you
-                      closing everything, use Server presence above.
-                    </p>
-                  </div>
+                  <details className="text-sm text-muted-foreground"><summary className="cursor-pointer">Activity connection</summary><p className="mt-2 text-xs">Activity controls are available when Zora is open inside Discord.</p></details>
                 ) : !connected ? (
-                  <button
+                  <Button
                     onClick={handleConnect}
                     disabled={status.kind === "busy"}
                     className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                   >
                     Connect to Discord
-                  </button>
+                  </Button>
                 ) : (
                   <>
-                    <button
+                    <Button
                       onClick={handleActivate}
                       disabled={status.kind === "busy"}
                       className="w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
                     >
                       Activate this status
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={handleClear}
                       disabled={status.kind === "busy"}
                       className="w-full rounded-xl border border-border bg-secondary px-4 py-3 text-sm font-semibold transition-colors hover:bg-accent disabled:opacity-60"
                     >
                       Clear
-                    </button>
+                    </Button>
                   </>
                 )}
 
-                {status.message && (
-                  <p
-                    className={`text-sm ${
-                      status.kind === "error" ? "text-destructive" : "text-muted-foreground"
-                    }`}
-                  >
-                    {status.message}
-                  </p>
-                )}
               </div>
             </div>
 
-            <div className="panel p-5 text-sm text-muted-foreground sm:p-6">
-              <h3 className="text-sm font-semibold text-foreground">What Discord allows</h3>
+            <details className="border-t border-border pt-4 text-xs text-muted-foreground">
+              <summary className="cursor-pointer text-sm font-medium">Discord limitations</summary>
               <ul className="mt-3 space-y-2">
                 <li>
                   <strong className="text-foreground">The header has two parts.</strong> The verb —
@@ -1112,7 +1074,7 @@ function PresenceStudio() {
                   outlives the Activity: the worker keeps it up until you press Stop.
                 </li>
               </ul>
-            </div>
+            </details>
           </section>
         </div>
       </div>
@@ -1122,7 +1084,7 @@ function PresenceStudio() {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">
+    <span className="text-sm font-medium text-muted-foreground">
       {children}
     </span>
   );
@@ -1205,7 +1167,7 @@ function PresenceCard({
       : "";
 
   return (
-    <div className="mt-4 rounded-2xl border border-border bg-background/70 p-4">
+    <div className="mt-4 border-t border-border pt-5">
       <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
         {verb}
       </p>
@@ -1238,7 +1200,7 @@ function PresenceCard({
         </div>
 
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold">Your Discord app name</p>
+          <p className="truncate text-sm font-semibold">𝒁𝒐𝒓𝒂 𝑺𝒕𝒖𝒅𝒊𝒐 ✦</p>
           <p className="truncate text-sm text-muted-foreground">
             {draft.details || <span className="italic opacity-60">Details line</span>}
           </p>
