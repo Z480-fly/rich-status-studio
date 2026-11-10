@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, Copy, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Copy, MessageCircle, Plus, Search, Send, ShieldBan, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StudioNav } from "@/components/StudioNav";
 import { getChatInbox, getChatThread, findChatUsers, listChatPeople, sendChatMessage, setChatBlock } from "@/lib/chat.functions";

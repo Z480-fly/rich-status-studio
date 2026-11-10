@@ -235,8 +235,7 @@
 @media (max-width: 639px) {
   .studio-nav nav button, .studio-nav nav a { font-size: 12px; padding-inline: 8px; }
   .studio-shell .creator-layout { display: flex; flex-direction: column; gap: 1.5rem; }
-  .studio-shell .preview-section { order: -1; width: 100%; }
-  .studio-shell .preview-section > details { display: none; }
+  .studio-shell .preview-section { width: 100%; }
   .studio-shell .preview-section .connection-section { padding-bottom: 0; }
 }
 @media (prefers-reduced-motion: reduce) {

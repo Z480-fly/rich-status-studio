@@ -782,7 +782,7 @@ function PresenceStudio() {
                 <p className="mt-1 text-xs text-muted-foreground">
                   {draft.color && !draftColor
                     ? "Use a hex code like #4ade80."
-                    : "Discord has no colour setting for presence, so the colour tints the studio and, when you leave the photos empty, becomes the artwork on your profile."}
+                    : "When no photo is selected, this colour becomes your status artwork."}
                 </p>
               </div>
 
