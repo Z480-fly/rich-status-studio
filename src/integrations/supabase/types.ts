@@ -246,47 +246,6 @@ export type Database = {
         }
         Relationships: []
       }
-      profiles: {
-        Row: {
-          discord_user_id: string
-          display_name: string
-          handle: string
-          published: boolean
-          sections: Json
-          tagline: string
-          theme: Json
-          updated_at: string
-        }
-        Insert: {
-          discord_user_id: string
-          display_name: string
-          handle: string
-          published?: boolean
-          sections?: Json
-          tagline?: string
-          theme?: Json
-          updated_at?: string
-        }
-        Update: {
-          discord_user_id?: string
-          display_name?: string
-          handle?: string
-          published?: boolean
-          sections?: Json
-          tagline?: string
-          theme?: Json
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_discord_user_id_fkey"
-            columns: ["discord_user_id"]
-            isOneToOne: true
-            referencedRelation: "discord_accounts"
-            referencedColumns: ["discord_user_id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
