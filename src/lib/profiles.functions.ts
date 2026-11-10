@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Json } from "@/integrations/supabase/types";
 import {
   HANDLE_PATTERN,
@@ -77,6 +78,20 @@ type ProfileRow = {
   published: boolean;
 };
 
+// Local contract for pending profile storage; do not edit generated Cloud types.
+type StoredProfileRow = ProfileRow & { discord_user_id: string; updated_at: string };
+type ProfileDatabase = {
+  public: {
+    Tables: {
+      profiles: { Row: StoredProfileRow; Insert: StoredProfileRow; Update: Partial<StoredProfileRow>; Relationships: [] };
+    };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
+  };
+};
+
 /** Stored rows were validated on the way in; re-validate so old data can never break a page. */
 function rowToProfile(row: ProfileRow, fallbackName: string): ProfileDraft {
   const fallback = emptyProfile(fallbackName);
@@ -112,7 +127,7 @@ export const getMyProfile = createServerFn({ method: "POST" })
       throw error;
     }
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
+    const { data: row, error } = await (supabaseAdmin as unknown as SupabaseClient<ProfileDatabase>)
       .from("profiles")
       .select("handle,display_name,tagline,theme,sections,published")
       .eq("discord_user_id", me.id)
@@ -131,7 +146,7 @@ export const saveMyProfile = createServerFn({ method: "POST" })
     const me = await viewer(data.accessToken);
     const draft = readProfileDraft(data.profile);
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
+    const { data: row, error } = await (supabaseAdmin as unknown as SupabaseClient<ProfileDatabase>)
       .from("profiles")
       .upsert(
         {
@@ -165,7 +180,7 @@ export const getPublicProfile = createServerFn({ method: "POST" })
   })
   .handler(async ({ data }): Promise<{ profile: PublicProfile | null }> => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { data: row, error } = await supabaseAdmin
+    const { data: row, error } = await (supabaseAdmin as unknown as SupabaseClient<ProfileDatabase>)
       .from("profiles")
       .select("discord_user_id,handle,display_name,tagline,theme,sections,published,updated_at")
       .eq("handle", data.handle)
