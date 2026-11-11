@@ -548,9 +548,9 @@ function PresenceStudio() {
           <div><p className="mb-1 text-xs font-medium text-muted-foreground">YOUR SPACE, YOUR STATUS</p><h1 className="text-3xl font-semibold">Presence studio<span className="text-primary">.</span></h1></div>
           <span className={`inline-flex shrink-0 items-center gap-2 text-xs ${pill.tone === "on" ? "text-primary" : "text-muted-foreground"}`}><span className={`size-2 rounded-full ${pill.tone === "on" ? "bg-primary" : "bg-muted-foreground"}`} />{pill.tone === "on" ? "Live" : pill.tone === "warn" ? "Reconnecting" : "Offline"}</span>
         </div>
-        <nav aria-label="Studio sections" className="flex gap-1 border-b border-border">{([
+        <nav aria-label="Studio sections" className="flex gap-1 rounded-2xl bg-secondary p-1">{([
           ["creator", "Creator", Sparkles], ["presets", "Presets", FolderHeart], ["settings", "Settings", Settings2],
-        ] as const).map(([id, label, Icon]) => <Button key={id} variant="ghost" aria-current={workspace === id ? "page" : undefined} className={`h-12 flex-1 rounded-none border-b-2 sm:flex-none sm:px-6 ${workspace === id ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`} onClick={() => setWorkspace(id)}><Icon />{label}{id === "presets" && savedPresets.length > 0 && <span className="text-xs">{savedPresets.length}</span>}</Button>)}</nav>
+        ] as const).map(([id, label, Icon]) => <Button key={id} variant="ghost" aria-current={workspace === id ? "page" : undefined} className={`h-11 flex-1 rounded-xl sm:flex-none sm:px-6 ${workspace === id ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`} onClick={() => setWorkspace(id)}><Icon />{label}{id === "presets" && savedPresets.length > 0 && <span className="text-xs">{savedPresets.length}</span>}</Button>)}</nav>
         {status.message && <p role={status.kind === "error" ? "alert" : "status"} className={`mt-4 break-words rounded-lg border border-border px-4 py-3 text-sm ${status.kind === "error" ? "text-destructive" : "text-primary"}`}>{status.message}</p>}
         <div hidden={workspace !== "presets"}><PresetLibrary saved={savedPresets} loading={savedLoading} linked={canUseAccount} busy={status.kind === "busy"} selectedId={editingId} templateId={presetId} onApply={applySavedPreset} onTemplate={choosePreset} onDuplicate={preset => void handleDuplicatePreset(preset)} onDelete={id => void handleDeletePreset(id)} onConnect={() => setWorkspace("settings")} /></div>
         <div hidden={workspace !== "settings"} className="py-6"><h2 className="text-2xl font-semibold">Settings</h2>        {/* Server presence: link + worker-driven Rich Presence */}
@@ -683,9 +683,9 @@ function PresenceStudio() {
         <div hidden={workspace !== "creator"} className="creator-layout grid gap-8 py-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <section className="editor-section min-w-0 lg:border-r lg:border-border lg:pr-8">
             <div className="flex items-center justify-between"><h2 className="text-xl font-semibold">{editingId ? saveName || "Edit preset" : "Create a status"}</h2><span className="text-xs text-muted-foreground">{activePreset?.name}</span></div>
-            <div className="editor-tabs mt-5 flex border-b border-border" role="tablist" aria-label="Status fields">{([
+            <div className="editor-tabs mt-5 flex gap-1 rounded-2xl bg-secondary p-1" role="tablist" aria-label="Status fields">{([
               ["text", "Text", SlidersHorizontal], ["artwork", "Artwork", Image], ["timing", "Timing", Timer],
-            ] as const).map(([id, label, Icon]) => <Button key={id} role="tab" aria-selected={editorTab === id} variant="ghost" className={`flex-1 rounded-none border-b-2 py-5 ${editorTab === id ? "border-primary text-primary" : "border-transparent text-muted-foreground"}`} onClick={() => setEditorTab(id)}><Icon />{label}</Button>)}</div>
+            ] as const).map(([id, label, Icon]) => <Button key={id} role="tab" aria-selected={editorTab === id} variant="ghost" className={`flex-1 rounded-xl py-3 ${editorTab === id ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`} onClick={() => setEditorTab(id)}><Icon />{label}</Button>)}</div>
 
             <div className="mt-5 space-y-5">
               <div hidden={editorTab !== "text"}>
@@ -1056,7 +1056,7 @@ function PresenceStudio() {
                   Listening to, Playing, Watching — comes from Activity type above. The name shown
                   beside it is your Discord application's name: rename it in the{" "}
                   <a
-                    className="underline hover:text-foreground"
+                    className="font-medium text-primary hover:opacity-80"
                     href="https://discord.com/developers/applications"
                     target="_blank"
                     rel="noreferrer"
