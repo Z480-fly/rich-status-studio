@@ -141,6 +141,7 @@ function seenAgo(seconds: number): string {
 function PresenceStudio() {
   const [presetId, setPresetId] = useState("music");
   const [workspace, setWorkspace] = useState<"creator" | "presets" | "settings">("creator");
+  const [styleTarget, setStyleTarget] = useState<"details" | "state">("details");
   const [editorTab, setEditorTab] = useState<"text" | "artwork" | "timing">("text");
   const [draft, setDraft] = useState<PresenceDraft>(
     () => ({ ...PRESETS[0]?.draft } as PresenceDraft),
