@@ -15,6 +15,13 @@
       "when": 1793667371505,
       "tag": "0001_chat_atomic_blocking",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794356505028,
+      "tag": "0002_presence_expiration",
+      "breakpoints": true
     }
   ]
 }
