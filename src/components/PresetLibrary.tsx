@@ -11,7 +11,7 @@ const TILE_HUES = ["bg-chart-1/15", "bg-chart-2/15", "bg-chart-3/15", "bg-chart-
 function tileHue(id: string): string {
   let sum = 0;
   for (const ch of id) sum += ch.charCodeAt(0);
-  return TILE_HUES[sum % TILE_HUES.length];
+  return TILE_HUES[sum % TILE_HUES.length] ?? TILE_HUES[0]!;
 }
 
 type Props = {
