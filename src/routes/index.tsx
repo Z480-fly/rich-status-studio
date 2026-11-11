@@ -41,6 +41,7 @@ import {
   type ServerPresenceStatus,
 } from "@/lib/server-presence.functions";
 import { PUBLIC_SITE_ORIGIN } from "@/lib/site";
+import { FONT_STYLES, SYMBOLS } from "@/lib/fonts";
 import { ImagePicker } from "@/components/ImagePicker";
 import { ActivityBridgePanel } from "@/components/ActivityBridgePanel";
 
@@ -750,6 +751,57 @@ function PresenceStudio() {
                 placeholder="On repeat, all night"
                 max={128}
               />
+
+              <div>
+                <Label>Fancy text</Label>
+                <div className="mt-2 flex gap-1 rounded-xl bg-secondary p-1" aria-label="Which line to style">
+                  {(["details", "state"] as const).map((target) => (
+                    <Button
+                      key={target}
+                      variant="ghost"
+                      onClick={() => setStyleTarget(target)}
+                      className={`h-9 flex-1 rounded-lg ${styleTarget === target ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}
+                    >
+                      {target === "details" ? "Details" : "State"}
+                    </Button>
+                  ))}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  {FONT_STYLES.map((style) => {
+                    const current = draft[styleTarget];
+                    const preview = current.trim() ? style.convert(current) : style.convert(style.sample);
+                    return (
+                      <Button
+                        key={style.id}
+                        variant="outline"
+                        onClick={() => set(styleTarget, style.convert(draft[styleTarget]).slice(0, 128))}
+                        className="flex h-auto flex-col items-start gap-1 px-3 py-2 text-left"
+                        title={`Apply ${style.label} to ${styleTarget}`}
+                      >
+                        <span className="text-xs text-muted-foreground">{style.label}</span>
+                        <span className="w-full truncate text-sm">{preview}</span>
+                      </Button>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-1" aria-label="Decorative symbols">
+                  {SYMBOLS.map((symbol) => (
+                    <Button
+                      key={symbol}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => set(styleTarget, `${draft[styleTarget]}${symbol}`.slice(0, 128))}
+                      className="min-w-9"
+                      title={`Add ${symbol} to ${styleTarget}`}
+                    >
+                      {symbol}
+                    </Button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Styles are special characters, so they show up for everyone on Discord.
+                </p>
+              </div>
 
               </div>
               <div hidden={editorTab !== "artwork"}>
