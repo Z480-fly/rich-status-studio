@@ -1,0 +1,2 @@
+ALTER TABLE public.presence_sessions ADD COLUMN expires_at timestamp with time zone;
+COMMENT ON COLUMN public.presence_sessions.expires_at IS 'When the desired running presence should auto-stop. NULL means it runs until manually stopped.';

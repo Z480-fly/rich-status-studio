@@ -175,6 +175,7 @@ export type Database = {
           created_at: string
           desired_state: string
           discord_user_id: string
+          expires_at: string | null
           revision: number
           updated_at: string
           worker_heartbeat_at: string | null
@@ -186,6 +187,7 @@ export type Database = {
           created_at?: string
           desired_state?: string
           discord_user_id: string
+          expires_at?: string | null
           revision?: number
           updated_at?: string
           worker_heartbeat_at?: string | null
@@ -197,6 +199,7 @@ export type Database = {
           created_at?: string
           desired_state?: string
           discord_user_id?: string
+          expires_at?: string | null
           revision?: number
           updated_at?: string
           worker_heartbeat_at?: string | null
