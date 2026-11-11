@@ -8,11 +8,11 @@ export function StudioNav({ active = "creator" }: { active?: "creator" | "inbox"
       <span className="flex size-10 items-center justify-center rounded-lg bg-primary text-primary-foreground"><Sparkles className="size-5" /></span>
       <span className="font-display text-xl font-semibold">𝒁𝒐𝒓𝒂 𝑺𝒕𝒖𝒅𝒊𝒐 <span className="text-primary">✦</span></span>
     </Link>
-    <nav aria-label="Zora navigation" className="flex w-full items-center gap-1 sm:w-auto">
-      <Button variant={active === "creator" ? "secondary" : "ghost"} asChild className="flex-1 sm:flex-none"><Link to="/"><Sparkles />Creator</Link></Button>
-      <Button variant={active === "inbox" ? "secondary" : "ghost"} asChild className="flex-1 sm:flex-none"><Link to="/inbox"><MessageCircle />Inbox</Link></Button>
-      <Button variant="ghost" asChild className="flex-1 sm:flex-none"><Link to="/fonts"><Palette />Fonts</Link></Button>
-      <Button variant="ghost" asChild className="flex-1 sm:flex-none"><Link to="/profile"><UserRound />Profile</Link></Button>
+    <nav aria-label="Zora navigation" className="flex w-full items-center gap-1 rounded-2xl bg-secondary p-1 sm:w-auto">
+      <Button variant="ghost" asChild className={`flex-1 rounded-xl sm:flex-none ${active === "creator" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}><Link to="/"><Sparkles />Creator</Link></Button>
+      <Button variant="ghost" asChild className={`flex-1 rounded-xl sm:flex-none ${active === "inbox" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "text-muted-foreground"}`}><Link to="/inbox"><MessageCircle />Inbox</Link></Button>
+      <Button variant="ghost" asChild className="flex-1 rounded-xl text-muted-foreground sm:flex-none"><Link to="/fonts"><Palette />Fonts</Link></Button>
+      <Button variant="ghost" asChild className="flex-1 rounded-xl text-muted-foreground sm:flex-none"><Link to="/profile"><UserRound />Profile</Link></Button>
     </nav>
   </header>;
 }

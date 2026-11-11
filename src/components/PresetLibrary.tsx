@@ -6,6 +6,14 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { PRESETS, verbFor, type Preset } from "@/lib/presence";
 import type { SavedPreset } from "@/lib/presets.functions";
 
+const TILE_HUES = ["bg-chart-1/15", "bg-chart-2/15", "bg-chart-3/15", "bg-chart-4/15", "bg-chart-5/15"];
+
+function tileHue(id: string): string {
+  let sum = 0;
+  for (const ch of id) sum += ch.charCodeAt(0);
+  return TILE_HUES[sum % TILE_HUES.length] ?? TILE_HUES[0]!;
+}
+
 type Props = {
   saved: SavedPreset[]; loading: boolean; linked: boolean; busy: boolean;
   selectedId: string | null; templateId: string;
@@ -43,7 +51,7 @@ export function PresetLibrary(props: Props) {
       : <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{items.map(preset => {
         const selected = collection === "saved" ? props.selectedId === preset.id : !props.selectedId && props.templateId === preset.id;
         return <article key={preset.id} className={`preset-tile relative flex min-w-0 flex-col rounded-lg border p-4 ${selected ? "border-primary bg-primary/5" : "border-border bg-card"}`}>
-          <div className="mb-4 flex items-center justify-between"><span className="flex size-11 items-center justify-center rounded-lg bg-secondary text-2xl">{preset.emoji}</span>{selected && <Check className="size-4 text-primary" />}
+          <div className="mb-4 flex items-center justify-between"><span className={`flex size-11 items-center justify-center rounded-lg text-2xl ${tileHue(preset.id)}`}>{preset.emoji}</span>{selected && <Check className="size-4 text-primary" />}
             {collection === "saved" && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`Options for ${preset.name}`} title="Preset options"><MoreHorizontal /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => props.onApply(preset)}><Pencil />Edit / rename</DropdownMenuItem><DropdownMenuItem disabled={props.busy} onSelect={() => props.onDuplicate(preset)}><Copy />Duplicate</DropdownMenuItem><DropdownMenuSeparator /><DropdownMenuItem className="text-destructive focus:text-destructive" disabled={props.busy} onSelect={() => setRemove(preset)}><Trash2 />Delete</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}
           </div>
           <h3 className="break-words text-base font-semibold">{preset.name}</h3><span className="mt-1 text-xs text-primary">{verbFor(preset.draft.type)}</span><p className="mt-3 truncate text-sm text-muted-foreground">{preset.draft.details || "Custom status"}</p><p className="mt-1 truncate text-xs text-muted-foreground">{preset.draft.state || "—"}</p>
