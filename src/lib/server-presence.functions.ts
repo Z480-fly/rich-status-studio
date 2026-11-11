@@ -22,6 +22,8 @@ export interface ServerPresenceStatus {
   workerMessage: string | null;
   workerSeenSecondsAgo: number | null;
   activity: Json | null;
+  /** ISO time the status auto-stops, or null when it runs until manually stopped. */
+  expiresAt: string | null;
 }
 
 /**
@@ -49,6 +51,7 @@ export const getServerPresenceStatus = createServerFn({ method: "GET" }).handler
         workerMessage: null,
         workerSeenSecondsAgo: null,
         activity: null,
+        expiresAt: null,
       };
     }
 
@@ -67,21 +70,28 @@ export const getServerPresenceStatus = createServerFn({ method: "GET" }).handler
     ]);
 
     const heartbeat = session?.worker_heartbeat_at as string | null | undefined;
+    const expiresAt = (session?.expires_at as string | null) ?? null;
+    const expired = expiresAt != null && new Date(expiresAt).getTime() <= Date.now();
+    const desired = (session?.desired_state as "running" | "stopped") ?? "stopped";
     return {
       linked: true,
       username: (account?.username as string | null) ?? null,
-      desiredState: (session?.desired_state as "running" | "stopped") ?? "stopped",
+      desiredState: expired && desired === "running" ? "stopped" : desired,
       workerState: (session?.worker_state as string) ?? "idle",
       workerMessage: (session?.worker_message as string | null) ?? null,
       workerSeenSecondsAgo: heartbeat
         ? Math.round((Date.now() - new Date(heartbeat).getTime()) / 1000)
         : null,
       activity: (session?.activity as Json | null) ?? null,
+      expiresAt: expired ? null : expiresAt,
     };
   },
 );
 
-function validateActivity(input: { activity: Record<string, Json> }) {
+/** Longest a status may auto-expire after: 7 days. */
+const MAX_EXPIRES_SECONDS = 7 * 24 * 60 * 60;
+
+function validateActivity(input: { activity: Record<string, Json>; expiresInSeconds?: number | null }) {
   if (!input?.activity || typeof input.activity !== "object") {
     throw new Error("Nothing to publish.");
   }
@@ -91,12 +101,25 @@ function validateActivity(input: { activity: Record<string, Json> }) {
   for (const key of allowed) {
     if (key in input.activity) activity[key] = input.activity[key] as Json;
   }
-  return { activity };
+  let expiresInSeconds: number | null = null;
+  if (input.expiresInSeconds != null) {
+    if (
+      typeof input.expiresInSeconds !== "number" ||
+      !Number.isFinite(input.expiresInSeconds) ||
+      input.expiresInSeconds < 60 ||
+      input.expiresInSeconds > MAX_EXPIRES_SECONDS
+    ) {
+      throw new Error("Invalid expiration.");
+    }
+    expiresInSeconds = Math.round(input.expiresInSeconds);
+  }
+  return { activity, expiresInSeconds };
 }
 
 async function writeDesiredState(
   desired: "running" | "stopped",
   activity: Record<string, Json> | null,
+  expiresInSeconds: number | null = null,
 ) {
   const userId = await currentUser();
   if (!userId) throw new Error("Link your Discord account first.");
@@ -113,6 +136,10 @@ async function writeDesiredState(
     desired_state: desired,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     activity: activity as any,
+    expires_at:
+      desired === "running" && expiresInSeconds != null
+        ? new Date(Date.now() + expiresInSeconds * 1000).toISOString()
+        : null,
     revision: ((existing?.revision as number) ?? 0) + 1,
   };
   const { error } = await supabaseAdmin
@@ -124,11 +151,11 @@ async function writeDesiredState(
 
 export const startServerPresence = createServerFn({ method: "POST" })
   .validator(validateActivity)
-  .handler(({ data }) => writeDesiredState("running", data.activity));
+  .handler(({ data }) => writeDesiredState("running", data.activity, data.expiresInSeconds));
 
 export const updateServerPresence = createServerFn({ method: "POST" })
   .validator(validateActivity)
-  .handler(({ data }) => writeDesiredState("running", data.activity));
+  .handler(({ data }) => writeDesiredState("running", data.activity, data.expiresInSeconds));
 
 export const stopServerPresence = createServerFn({ method: "POST" }).handler(() =>
   writeDesiredState("stopped", null),
